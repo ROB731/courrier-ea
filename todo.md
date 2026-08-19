@@ -31,3 +31,9 @@
 - [x] Générer les aperçus et les courriers avec toutes les variables validées.
 - [x] Conserver les informations multi-champs dans l’historique des campagnes.
 - [x] Tester les scénarios de fusion multi-champs et vérifier les écrans associés.
+- [x] Créer la table sécurisée de base de destinataires réutilisables.
+- [x] Enregistrer ou mettre à jour les destinataires après import de données validées.
+- [x] Ajouter les procédures de recherche, création, modification et suppression des destinataires.
+- [x] Construire le répertoire de destinataires avec ajout manuel et recherche.
+- [x] Permettre la sélection de destinataires enregistrés pour une nouvelle campagne.
+- [x] Tester la base de destinataires et vérifier son interface sur ordinateur et mobile.

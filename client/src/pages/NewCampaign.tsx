@@ -1,4 +1,5 @@
 import DashboardLayout from "@/components/DashboardLayout";
+import { DirectoryRecipientPicker, type DirectoryRecipient } from "@/components/DirectoryRecipientPicker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,7 +25,7 @@ import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 
 type SourceRow = { rowNumber: number; values: Record<string, string>; name: string; issues: string[] };
-type SourceData = { fileKey: string; fileUrl: string; sourceType: "excel" | "paste"; columnName: string; headers: string[]; rows: SourceRow[] };
+type SourceData = { fileKey: string; fileUrl: string; sourceType: "excel" | "paste" | "directory"; columnName: string; headers: string[]; rows: SourceRow[] };
 type PreparedRecipient = { sourceRow: number; name: string; values: Record<string, string>; warning: string | null; issues: string[] };
 
 const REQUIRED_FIELD = "DESTINATAIRE";
@@ -102,7 +103,8 @@ export default function NewCampaign() {
       setPreviewIndex("0");
       setPreviewUrl("");
       setPreviewWarnings([]);
-      setNotice(`${result.validCount} courrier${result.validCount > 1 ? "s" : ""} prêt${result.validCount > 1 ? "s" : ""}${result.invalidCount ? ` · ${result.invalidCount} ligne${result.invalidCount > 1 ? "s" : ""} à corriger` : ""}.`);
+      const directoryNote = result.directory.created || result.directory.updated ? ` · ${result.directory.created} ajouté${result.directory.created > 1 ? "s" : ""} et ${result.directory.updated} mis à jour dans le répertoire` : "";
+      setNotice(`${result.validCount} courrier${result.validCount > 1 ? "s" : ""} prêt${result.validCount > 1 ? "s" : ""}${result.invalidCount ? ` · ${result.invalidCount} ligne${result.invalidCount > 1 ? "s" : ""} à corriger` : ""}${directoryNote}.`);
     },
   });
   const preview = trpc.courrier.preview.useMutation({ onSuccess: result => { setPreviewUrl(result.pdfUrl); setPreviewWarnings(result.warnings); } });
@@ -140,6 +142,18 @@ export default function NewCampaign() {
   function importPaste() {
     if (!pasteContent.trim()) return;
     importPastedTable.mutate({ content: pasteContent });
+  }
+
+  function useDirectoryRecipients(directoryRecipients: DirectoryRecipient[]) {
+    const headers = Array.from(new Set([REQUIRED_FIELD, ...directoryRecipients.flatMap(recipient => Object.keys(recipient.values))]));
+    const rows = directoryRecipients.map((recipient, index) => ({
+      rowNumber: index + 1,
+      name: recipient.name,
+      issues: [],
+      values: { ...recipient.values, [REQUIRED_FIELD]: recipient.name },
+    }));
+    applySource({ fileKey: "directory://recipients", fileUrl: "directory://recipients", sourceType: "directory", columnName: REQUIRED_FIELD, headers, rows });
+    setNotice(`${rows.length} destinataire${rows.length > 1 ? "s" : ""} chargé${rows.length > 1 ? "s" : ""} depuis votre répertoire. Vérifiez les correspondances avant de générer.`);
   }
 
   function updateMapping(field: string, header: string) {
@@ -206,8 +220,9 @@ export default function NewCampaign() {
             <StepCard number="3" title="Importer ou coller les données" description="Excel est recommandé. Pour une petite liste, vous pouvez aussi coller un tableau avec des tabulations, des points-virgules, des virgules ou le caractère |.">
               <label className="flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-dashed border-[#cfc7b8] bg-[#fbfaf7] px-4 py-4 transition hover:border-[#9a7a40] hover:bg-[#fffdf8]"><span className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-lg bg-[#f4eddd] text-[#9a7a40]"><FileSpreadsheet className="h-5 w-5" /></span><span><span className="block text-sm font-medium text-[#34453b]">Importer la liste Excel</span><span className="block text-xs text-[#89918b]">Fichier .xlsx avec une colonne Destinataire</span></span></span>{importExcel.isPending ? <Loader2 className="h-4 w-4 animate-spin text-[#9a7a40]" /> : <UploadCloud className="h-4 w-4 text-[#9a7a40]" />}<input className="sr-only" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" type="file" onChange={handleExcel} /></label>
               <div className="mt-4 rounded-xl border border-[#e5e2db] bg-[#fcfbf8] p-3"><div className="flex items-center gap-2 text-sm font-medium text-[#495a50]"><ClipboardPaste className="h-4 w-4 text-[#9a7a40]" /> Coller un tableau</div><Textarea value={pasteContent} onChange={event => setPasteContent(event.target.value)} placeholder={"Destinataire;Téléphone;Localité\nVIGASSISTANCE;+225 01 02 03 04 05;Abidjan"} className="mt-3 min-h-24 resize-y rounded-xl border-[#ddd9d0] bg-white text-xs" /><Button variant="outline" onClick={importPaste} disabled={!pasteContent.trim() || importPastedTable.isPending} className="mt-3 h-9 rounded-lg border-[#d4d8d2] text-[#315e51]">{importPastedTable.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <TableProperties className="mr-2 h-4 w-4" />}Lire le tableau collé</Button></div>
+              <DirectoryRecipientPicker onUse={useDirectoryRecipients} />
               {(importExcel.error || importPastedTable.error) && <ErrorMessage text={importExcel.error?.message || importPastedTable.error?.message || "Erreur d’import."} />}
-              {source && <div className="mt-4 rounded-xl border border-[#dce8df] bg-[#f5f7f4] p-4"><p className="text-sm font-medium text-[#315e51]">{source.rows.length} ligne{source.rows.length > 1 ? "s" : ""} détectée{source.rows.length > 1 ? "s" : ""} · source {source.sourceType === "excel" ? "Excel" : "collée"}</p><div className="mt-3 flex flex-wrap gap-2">{source.headers.map(header => <span key={header} className="rounded-md bg-white px-2.5 py-1 text-xs text-[#5c6861] shadow-sm">{header}</span>)}</div></div>}
+              {source && <div className="mt-4 rounded-xl border border-[#dce8df] bg-[#f5f7f4] p-4"><p className="text-sm font-medium text-[#315e51]">{source.rows.length} ligne{source.rows.length > 1 ? "s" : ""} détectée{source.rows.length > 1 ? "s" : ""} · source {source.sourceType === "excel" ? "Excel" : source.sourceType === "directory" ? "répertoire" : "collée"}</p><div className="mt-3 flex flex-wrap gap-2">{source.headers.map(header => <span key={header} className="rounded-md bg-white px-2.5 py-1 text-xs text-[#5c6861] shadow-sm">{header}</span>)}</div></div>}
             </StepCard>
 
             {source && fields.length > 0 && <StepCard number="4" title="Associer les colonnes aux champs" description="Vérifiez la correspondance. Seul {{DESTINATAIRE}} est obligatoire ; les autres champs peuvent rester vides.">

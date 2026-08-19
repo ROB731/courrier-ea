@@ -1,17 +1,7 @@
-import { index, int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { index, int, mysqlEnum, mysqlTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
 
-/**
- * Core user table backing auth flow.
- * Extend this file with additional tables as your product grows.
- * Columns use camelCase to match both database fields and generated types.
- */
 export const users = mysqlTable("users", {
-  /**
-   * Surrogate primary key. Auto-incremented numeric value managed by the database.
-   * Use this for relations between tables.
-   */
   id: int("id").autoincrement().primaryKey(),
-  /** Manus OAuth identifier (openId) returned from the OAuth callback. Unique per user. */
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
@@ -73,8 +63,26 @@ export const campaignRecipients = mysqlTable("campaign_recipients", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, table => [index("campaign_recipients_campaign_position_idx").on(table.campaignId, table.position)]);
 
+export const directorySources = ["import", "manual"] as const;
+
+export const recipientDirectory = mysqlTable("recipient_directory", {
+  id: varchar("id", { length: 32 }).primaryKey(),
+  userId: int("userId").notNull(),
+  name: varchar("name", { length: 350 }).notNull(),
+  normalizedName: varchar("normalizedName", { length: 350 }).notNull(),
+  valuesJson: text("valuesJson").notNull(),
+  source: mysqlEnum("source", directorySources).default("import").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [
+  uniqueIndex("recipient_directory_user_normalized_name_idx").on(table.userId, table.normalizedName),
+  index("recipient_directory_user_updated_idx").on(table.userId, table.updatedAt),
+]);
+
 export type LetterTemplate = typeof letterTemplates.$inferSelect;
 export type InsertLetterTemplate = typeof letterTemplates.$inferInsert;
 export type Campaign = typeof campaigns.$inferSelect;
 export type InsertCampaign = typeof campaigns.$inferInsert;
 export type CampaignRecipient = typeof campaignRecipients.$inferSelect;
+export type RecipientDirectory = typeof recipientDirectory.$inferSelect;
+export type InsertRecipientDirectory = typeof recipientDirectory.$inferInsert;

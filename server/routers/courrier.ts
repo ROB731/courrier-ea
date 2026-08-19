@@ -14,6 +14,7 @@ import {
   listCampaignRecipients,
   listCampaignsForUser,
   listLetterTemplatesForUser,
+  saveImportedDirectoryRecipients,
   updateCampaign,
   updateRecipientStatus,
 } from "../db";
@@ -210,7 +211,9 @@ export const courrierRouter = router({
     const fields = parseTemplateFields(template.fieldsJson);
     validateMappings(fields, input.mappings, input.headers);
     const recipients = prepareRecipients(fields, input.rows, input.mappings);
-    return { fields, recipients, validCount: recipients.filter(recipient => recipient.issues.length === 0).length, invalidCount: recipients.filter(recipient => recipient.issues.length > 0).length };
+    const validRecipients = recipients.filter(recipient => recipient.issues.length === 0);
+    const directory = await saveImportedDirectoryRecipients(ctx.user.id, validRecipients.map(recipient => ({ name: recipient.name, values: recipient.values })));
+    return { fields, recipients, validCount: validRecipients.length, invalidCount: recipients.filter(recipient => recipient.issues.length > 0).length, directory };
   }),
 
   preview: protectedProcedure.input(z.object({ templateId: z.string().min(8), values: valuesSchema })).mutation(async ({ ctx, input }) => {
@@ -244,7 +247,7 @@ export const courrierRouter = router({
     templateId: z.string().min(8),
     sourceFileKey: z.string().min(4),
     sourceFileUrl: z.string().min(4),
-    sourceType: z.enum(["excel", "paste"]),
+    sourceType: z.enum(["excel", "paste", "directory"]),
     mappings: z.record(z.string().regex(FIELD_NAME_PATTERN), z.string().min(1).max(160)),
     recipients: z.array(preparedRecipientSchema).min(1).max(500),
   })).mutation(async ({ ctx, input }) => {

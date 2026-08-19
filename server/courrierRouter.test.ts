@@ -3,10 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TrpcContext } from "./_core/context";
 
 const mocks = vi.hoisted(() => ({
-  createCampaign: vi.fn(), createLetterTemplate: vi.fn(), createRecipients: vi.fn(), getCampaignForUser: vi.fn(), getLetterTemplateForUser: vi.fn(), listCampaignRecipients: vi.fn(), listCampaignsForUser: vi.fn(), listLetterTemplatesForUser: vi.fn(), updateCampaign: vi.fn(), updateRecipientStatus: vi.fn(), storageGetSignedUrl: vi.fn(), storagePut: vi.fn(), mkdtemp: vi.fn(), readFile: vi.fn(), rm: vi.fn(), writeFile: vi.fn(), spawn: vi.fn(), nanoid: vi.fn(),
+  createCampaign: vi.fn(), createLetterTemplate: vi.fn(), createRecipients: vi.fn(), getCampaignForUser: vi.fn(), getLetterTemplateForUser: vi.fn(), listCampaignRecipients: vi.fn(), listCampaignsForUser: vi.fn(), listLetterTemplatesForUser: vi.fn(), saveImportedDirectoryRecipients: vi.fn(), updateCampaign: vi.fn(), updateRecipientStatus: vi.fn(), storageGetSignedUrl: vi.fn(), storagePut: vi.fn(), mkdtemp: vi.fn(), readFile: vi.fn(), rm: vi.fn(), writeFile: vi.fn(), spawn: vi.fn(), nanoid: vi.fn(),
 }));
 
-vi.mock("./db", () => ({ createCampaign: mocks.createCampaign, createLetterTemplate: mocks.createLetterTemplate, createRecipients: mocks.createRecipients, getCampaignForUser: mocks.getCampaignForUser, getLetterTemplateForUser: mocks.getLetterTemplateForUser, listCampaignRecipients: mocks.listCampaignRecipients, listCampaignsForUser: mocks.listCampaignsForUser, listLetterTemplatesForUser: mocks.listLetterTemplatesForUser, updateCampaign: mocks.updateCampaign, updateRecipientStatus: mocks.updateRecipientStatus }));
+vi.mock("./db", () => ({ createCampaign: mocks.createCampaign, createLetterTemplate: mocks.createLetterTemplate, createRecipients: mocks.createRecipients, getCampaignForUser: mocks.getCampaignForUser, getLetterTemplateForUser: mocks.getLetterTemplateForUser, listCampaignRecipients: mocks.listCampaignRecipients, listCampaignsForUser: mocks.listCampaignsForUser, listLetterTemplatesForUser: mocks.listLetterTemplatesForUser, saveImportedDirectoryRecipients: mocks.saveImportedDirectoryRecipients, updateCampaign: mocks.updateCampaign, updateRecipientStatus: mocks.updateRecipientStatus }));
 vi.mock("./storage", () => ({ storageGetSignedUrl: mocks.storageGetSignedUrl, storagePut: mocks.storagePut }));
 vi.mock("node:fs", () => ({ promises: { mkdtemp: mocks.mkdtemp, readFile: mocks.readFile, rm: mocks.rm, writeFile: mocks.writeFile } }));
 vi.mock("node:child_process", () => ({ spawn: mocks.spawn }));
@@ -37,7 +37,7 @@ function validBase64() { return Buffer.from("test-file-content").toString("base6
 describe("courrierRouter multi-champs", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.mkdtemp.mockResolvedValue("/tmp/courrier-ea-tests"); mocks.rm.mockResolvedValue(undefined); mocks.writeFile.mockResolvedValue(undefined); mocks.readFile.mockResolvedValue(Buffer.from("generated-file")); mocks.storageGetSignedUrl.mockResolvedValue("https://storage.example/file"); mocks.storagePut.mockImplementation(async (key: string) => ({ key: `${key}-stored`, url: `/manus-storage/${key}-stored` })); mocks.createCampaign.mockResolvedValue(undefined); mocks.createLetterTemplate.mockResolvedValue(undefined); mocks.createRecipients.mockResolvedValue(undefined); mocks.updateCampaign.mockResolvedValue(undefined); mocks.updateRecipientStatus.mockResolvedValue(undefined); mocks.nanoid.mockReturnValue("generated-id-12345");
+    mocks.mkdtemp.mockResolvedValue("/tmp/courrier-ea-tests"); mocks.rm.mockResolvedValue(undefined); mocks.writeFile.mockResolvedValue(undefined); mocks.readFile.mockResolvedValue(Buffer.from("generated-file")); mocks.storageGetSignedUrl.mockResolvedValue("https://storage.example/file"); mocks.storagePut.mockImplementation(async (key: string) => ({ key: `${key}-stored`, url: `/manus-storage/${key}-stored` })); mocks.createCampaign.mockResolvedValue(undefined); mocks.createLetterTemplate.mockResolvedValue(undefined); mocks.createRecipients.mockResolvedValue(undefined); mocks.saveImportedDirectoryRecipients.mockResolvedValue({ created: 1, updated: 0 }); mocks.updateCampaign.mockResolvedValue(undefined); mocks.updateRecipientStatus.mockResolvedValue(undefined); mocks.nanoid.mockReturnValue("generated-id-12345");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(Buffer.from("template-bytes"), { status: 200 })));
   });
   afterEach(() => vi.unstubAllGlobals());
@@ -79,6 +79,7 @@ describe("courrierRouter multi-champs", () => {
     const result = await courrierRouter.createCaller(createContext()).prepareRecipients({ templateId: template.id, headers: Object.keys(sourceRows[0]!.values), rows: sourceRows, mappings });
     expect(result.validCount).toBe(1);
     expect(result.recipients[0]).toMatchObject({ name: "VIGASSISTANCE", values: { CONTACT: "Awa Traoré", LOCALITE: "Abidjan" } });
+    expect(mocks.saveImportedDirectoryRecipients).toHaveBeenCalledWith(7, [expect.objectContaining({ name: "VIGASSISTANCE", values: expect.objectContaining({ TELEPHONE: "+225 01 02 03 04 05" }) })]);
   });
 
   it("refuse la préparation sans correspondance pour DESTINATAIRE", async () => {

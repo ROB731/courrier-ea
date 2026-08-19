@@ -21,7 +21,7 @@ import {
 import { startLogin } from "@/const";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useIsMobile } from "@/hooks/useMobile";
-import { FilePlus2, History, LayoutDashboard, LockKeyhole, LogOut, PanelLeft } from "lucide-react";
+import { FilePlus2, History, LayoutDashboard, LockKeyhole, LogOut, PanelLeft, UsersRound } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
@@ -31,6 +31,7 @@ const menuItems = [
   { icon: LayoutDashboard, label: "Vue d’ensemble", path: "/" },
   { icon: FilePlus2, label: "Nouvelle campagne", path: "/campagnes/nouvelle" },
   { icon: History, label: "Historique", path: "/campagnes" },
+  { icon: UsersRound, label: "Destinataires", path: "/destinataires" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "courrier-ea-sidebar-width";

@@ -27,7 +27,7 @@ export default function Home() {
           <div className="relative max-w-2xl">
             <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-[#e5c985]"><ShieldCheck className="h-4 w-4" /> Publication maîtrisée</div>
             <h1 className="mt-5 font-serif text-4xl tracking-tight sm:text-5xl">Vos courriers, <span className="text-[#f3d78f]">sans compromis</span> sur la mise en page.</h1>
-            <p className="mt-5 max-w-xl text-sm leading-7 text-[#d6e0dc] sm:text-base">COURRIER EA remplace uniquement le champ <strong className="font-semibold text-white">{"{{DESTINATAIRE}}"}</strong> de votre modèle Word, puis conserve votre présentation dans chaque document généré.</p>
+            <p className="mt-5 max-w-xl text-sm leading-7 text-[#d6e0dc] sm:text-base">COURRIER EA remplace uniquement les champs explicites de votre modèle Word, tels que <strong className="font-semibold text-white">{"{{DESTINATAIRE}}"}</strong>, <strong className="font-semibold text-white">{"{{TELEPHONE}}"}</strong> ou <strong className="font-semibold text-white">{"{{LOCALITE}}"}</strong>, puis conserve votre présentation dans chaque document généré.</p>
             <Link href="/campagnes/nouvelle"><Button className="mt-7 h-11 rounded-xl bg-[#e2bd70] px-5 font-semibold text-[#153d35] hover:bg-[#f1d38f]"><FilePlus2 className="mr-2 h-4 w-4" />Créer une campagne</Button></Link>
           </div>
         </section>
@@ -49,7 +49,7 @@ export default function Home() {
           <aside className="rounded-[1.6rem] border border-[#e5e2db] bg-[#fcfbf8] p-6 sm:p-7">
             <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#9a7a40]">Méthode fiable</p>
             <h2 className="mt-1 font-serif text-2xl text-[#1d3028]">Un contrôle à chaque étape</h2>
-            <div className="mt-7 space-y-6"><Process number="01" title="Modèle validé" text="Une occurrence exacte de {{DESTINATAIRE}} est exigée avant l’import." /><Process number="02" title="Aperçu rassurant" text="Vérifiez la première lettre et les noms plus longs avant de générer." /><Process number="03" title="Archives disponibles" text="Retrouvez le PDF groupé et le ZIP Word dans l’historique." /></div>
+            <div className="mt-7 space-y-6"><Process number="01" title="Modèle validé" text="Le champ obligatoire {{DESTINATAIRE}} et vos autres variables sont contrôlés avant l’import." /><Process number="02" title="Répertoire enrichi" text="Chaque import validé alimente votre base de destinataires réutilisables." /><Process number="03" title="Aperçu et archives" text="Contrôlez le PDF puis retrouvez vos fichiers regroupés dans l’historique." /></div>
           </aside>
         </section>
       </div>
