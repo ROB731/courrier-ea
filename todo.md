@@ -37,3 +37,7 @@
 - [x] Construire le répertoire de destinataires avec ajout manuel et recherche.
 - [x] Permettre la sélection de destinataires enregistrés pour une nouvelle campagne.
 - [x] Tester la base de destinataires et vérifier son interface sur ordinateur et mobile.
+- [x] Créer la page d’accueil publique de présentation de COURRIER EA.
+- [x] Présenter les bénéfices, le fonctionnement, la sécurité et les appels à l’action.
+- [x] Déplacer l’espace de travail sécurisé vers une route dédiée sans casser la navigation.
+- [x] Vérifier la page publique sur ordinateur et mobile.

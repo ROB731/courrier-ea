@@ -28,7 +28,7 @@ import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 import { Button } from "./ui/button";
 
 const menuItems = [
-  { icon: LayoutDashboard, label: "Vue d’ensemble", path: "/" },
+  { icon: LayoutDashboard, label: "Vue d’ensemble", path: "/atelier" },
   { icon: FilePlus2, label: "Nouvelle campagne", path: "/campagnes/nouvelle" },
   { icon: History, label: "Historique", path: "/campagnes" },
   { icon: UsersRound, label: "Destinataires", path: "/destinataires" },
