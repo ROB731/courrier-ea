@@ -41,3 +41,6 @@
 - [x] Présenter les bénéfices, le fonctionnement, la sécurité et les appels à l’action.
 - [x] Déplacer l’espace de travail sécurisé vers une route dédiée sans casser la navigation.
 - [x] Vérifier la page publique sur ordinateur et mobile.
+- [x] Vérifier l’accès GitHub et identifier ou créer le dépôt COURRIER EA.
+- [x] Exporter la version validée de COURRIER EA vers GitHub.
+- [x] Confirmer que le dépôt distant contient la version exportée.
