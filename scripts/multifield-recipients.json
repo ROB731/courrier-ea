@@ -1,0 +1,20 @@
+[
+  {
+    "values": {
+      "DESTINATAIRE": "VIGASSISTANCE",
+      "CONTACT": "Mme Awa Traoré",
+      "ADRESSE": "12, rue des Jardins",
+      "LOCALITE": "Abidjan, Cocody",
+      "TELEPHONE": "+225 01 02 03 04 05"
+    }
+  },
+  {
+    "values": {
+      "DESTINATAIRE": "CFAO INFRASTRUCTURE",
+      "CONTACT": "M. Koffi Koné",
+      "ADRESSE": "45, boulevard du Commerce",
+      "LOCALITE": "Abidjan, Plateau",
+      "TELEPHONE": "+225 05 06 07 08 09"
+    }
+  }
+]

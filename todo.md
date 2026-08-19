@@ -18,3 +18,16 @@
 - [x] Vérifier sur une campagne terminée la visibilité des boutons de PDF complet, impression et ZIP Word.
 - [x] Documenter le contrôle du parcours corrigé de génération et de sortie des fichiers.
 - [x] Tester l’action d’impression du PDF complet et le comportement lorsqu’une fenêtre est bloquée.
+- [x] Définir le modèle de données multi-champs et les champs de fusion autorisés.
+- [x] Préparer les sources de données Excel et collage de texte ; l’import PDF reste planifié après cette version.
+- [x] Concevoir l’écran de correspondance entre colonnes importées et champs du courrier.
+- [x] Ajouter la validation des données sensibles et les alertes de champs manquants.
+- [x] Réaliser une étude comparative des outils de publipostage et d’automatisation documentaire.
+- [x] Sélectionner les inspirations fonctionnelles à intégrer dans la version multi-champs de COURRIER EA.
+- [x] Détecter et enregistrer les champs de fusion multiples dans chaque modèle Word.
+- [x] Autoriser les données de destinataires multi-champs issues d’Excel et du collage de tableau.
+- [x] Ajouter l’écran de correspondance entre colonnes importées et champs du modèle.
+- [x] Ajouter les contrôles de champs obligatoires, de formats et de valeurs longues.
+- [x] Générer les aperçus et les courriers avec toutes les variables validées.
+- [x] Conserver les informations multi-champs dans l’historique des campagnes.
+- [x] Tester les scénarios de fusion multi-champs et vérifier les écrans associés.

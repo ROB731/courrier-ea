@@ -141,13 +141,14 @@ export async function getCampaignForUser(campaignId: string, userId: number) {
   return rows[0];
 }
 
-export async function createRecipients(campaignId: string, recipients: Array<{ name: string; warning: string | null; position: number }>): Promise<void> {
+export async function createRecipients(campaignId: string, recipients: Array<{ name: string; values: Record<string, string>; warning: string | null; position: number }>): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("La base de données est indisponible.");
   if (recipients.length === 0) return;
   await db.insert(campaignRecipients).values(recipients.map(recipient => ({
     campaignId,
     name: recipient.name,
+    valuesJson: JSON.stringify(recipient.values),
     warning: recipient.warning,
     position: recipient.position,
     status: "to_send" as const,

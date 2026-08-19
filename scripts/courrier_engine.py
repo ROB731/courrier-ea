@@ -1,21 +1,23 @@
-#!/usr/bin/env python3
 """Moteur documentaire de COURRIER EA.
 
-Le script ne remplace jamais de contenu libre : il exige exactement une occurrence
-de {{DESTINATAIRE}} dans le modèle avant toute génération.
+Le script remplace exclusivement les champs de fusion explicites au format
+{{NOM_DU_CHAMP}}. Les styles, marges, en-têtes et le reste du contenu Word
+ne sont jamais reconstruits.
 """
 
 from __future__ import annotations
 
 import argparse
+import csv
+import io
 import json
-import os
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
 import zipfile
+from collections import OrderedDict
 from pathlib import Path
 from typing import Iterator
 
@@ -24,7 +26,10 @@ from docx.text.paragraph import Paragraph
 from openpyxl import load_workbook
 from pypdf import PdfReader, PdfWriter
 
-TOKEN = "{{DESTINATAIRE}}"
+FIELD_PATTERN = re.compile(r"\{\{([A-Z][A-Z0-9_]*)\}\}")
+RAW_FIELD_PATTERN = re.compile(r"\{\{[^{}]+\}\}")
+REQUIRED_FIELD = "DESTINATAIRE"
+PHONE_PATTERN = re.compile(r"^\+?[0-9][0-9 .()/-]{5,}$")
 
 
 def iter_paragraphs(parent) -> Iterator[Paragraph]:
@@ -51,20 +56,33 @@ def iter_document_paragraphs(document: Document) -> Iterator[Paragraph]:
             yield from iter_paragraphs(area)
 
 
-def token_count(document: Document) -> int:
-    return sum("".join(run.text for run in paragraph.runs).count(TOKEN) for paragraph in iter_document_paragraphs(document))
+def inspect_fields(document: Document) -> tuple[list[str], dict[str, int], list[str]]:
+    """Return ordered field names, occurrence counts and malformed fields."""
+    counts: OrderedDict[str, int] = OrderedDict()
+    malformed: list[str] = []
+    for paragraph in iter_document_paragraphs(document):
+        text = "".join(run.text for run in paragraph.runs)
+        valid_spans = {(match.start(), match.end()) for match in FIELD_PATTERN.finditer(text)}
+        for match in FIELD_PATTERN.finditer(text):
+            field = match.group(1)
+            counts[field] = counts.get(field, 0) + 1
+        for raw_match in RAW_FIELD_PATTERN.finditer(text):
+            if (raw_match.start(), raw_match.end()) not in valid_spans:
+                malformed.append(raw_match.group(0))
+    return list(counts.keys()), dict(counts), list(dict.fromkeys(malformed))
 
 
-def replace_token_in_paragraph(paragraph: Paragraph, recipient: str) -> int:
-    """Replace one or more tokens while retaining the surrounding run styling."""
+def replace_field_in_paragraph(paragraph: Paragraph, field: str, value: str) -> int:
+    """Replace one field while retaining the surrounding run styling."""
+    token = f"{{{{{field}}}}}"
     replacements = 0
     while True:
         texts = [run.text for run in paragraph.runs]
         joined = "".join(texts)
-        start = joined.find(TOKEN)
+        start = joined.find(token)
         if start < 0:
             break
-        end = start + len(TOKEN)
+        end = start + len(token)
         offset = 0
         start_index = end_index = None
         start_offset = end_offset = 0
@@ -77,12 +95,12 @@ def replace_token_in_paragraph(paragraph: Paragraph, recipient: str) -> int:
                 break
             offset = next_offset
         if start_index is None or end_index is None:
-            raise ValueError("Le champ de fusion est incomplet dans le modèle.")
+            raise ValueError(f"Le champ {token} est incomplet dans le modèle.")
         start_run = paragraph.runs[start_index]
         end_run = paragraph.runs[end_index]
         before = start_run.text[:start_offset]
         after = end_run.text[end_offset:]
-        start_run.text = before + recipient + (after if start_index == end_index else "")
+        start_run.text = before + value + (after if start_index == end_index else "")
         if start_index != end_index:
             for index in range(start_index + 1, end_index):
                 paragraph.runs[index].text = ""
@@ -91,28 +109,63 @@ def replace_token_in_paragraph(paragraph: Paragraph, recipient: str) -> int:
     return replacements
 
 
-def create_letter(template_path: Path, destination_path: Path, recipient: str) -> None:
+def clean_values(raw_values: dict) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for key, value in raw_values.items():
+        if not isinstance(key, str):
+            continue
+        field = key.strip().upper()
+        if FIELD_PATTERN.fullmatch(f"{{{{{field}}}}}") is None:
+            continue
+        values[field] = "" if value is None else str(value).strip()
+    return values
+
+
+def warning_for_values(values: dict[str, str]) -> list[str]:
+    warnings: list[str] = []
+    recipient = values.get(REQUIRED_FIELD, "")
+    if len(recipient) > 30:
+        warnings.append("Destinataire long : vérifiez l’aperçu, un retour à la ligne peut être nécessaire.")
+    if len(values.get("CONTACT", "")) > 42:
+        warnings.append("Contact long : vérifiez l’aperçu de la zone destinataire.")
+    if len(values.get("ADRESSE", "")) > 65:
+        warnings.append("Adresse longue : vérifiez l’aperçu de la zone d’adresse.")
+    if len(values.get("LOCALITE", "")) > 36:
+        warnings.append("Localité longue : vérifiez l’aperçu de la zone d’adresse.")
+    telephone = values.get("TELEPHONE", "")
+    if telephone and not PHONE_PATTERN.fullmatch(telephone):
+        warnings.append("Téléphone à vérifier : conservez les chiffres et le préfixe international si nécessaire.")
+    return warnings
+
+
+def validate_template(document: Document) -> tuple[list[str], dict[str, int]]:
+    fields, counts, malformed = inspect_fields(document)
+    if malformed:
+        raise ValueError(f"Champ(s) de fusion invalide(s) : {', '.join(malformed)}. Utilisez uniquement {{NOM_DU_CHAMP}}.")
+    if REQUIRED_FIELD not in fields:
+        raise ValueError("Le modèle doit contenir le champ obligatoire {{DESTINATAIRE}}.")
+    return fields, counts
+
+
+def create_letter(template_path: Path, destination_path: Path, raw_values: dict) -> None:
     document = Document(template_path)
-    count = token_count(document)
-    if count != 1:
-        raise ValueError(
-            f"Le modèle doit contenir exactement une occurrence de {TOKEN}. Occurrences trouvées : {count}."
-        )
-    replacements = sum(replace_token_in_paragraph(paragraph, recipient) for paragraph in iter_document_paragraphs(document))
-    if replacements != 1:
-        raise ValueError("Le champ destinataire n’a pas pu être remplacé de manière contrôlée.")
+    fields, counts = validate_template(document)
+    values = clean_values(raw_values)
+    if not values.get(REQUIRED_FIELD):
+        raise ValueError("La valeur du champ obligatoire {{DESTINATAIRE}} est manquante.")
+    replacements = 0
+    for paragraph in iter_document_paragraphs(document):
+        for field in fields:
+            replacements += replace_field_in_paragraph(paragraph, field, values.get(field, ""))
+    expected = sum(counts.values())
+    if replacements != expected:
+        raise ValueError("Un ou plusieurs champs du modèle n’ont pas pu être remplacés de manière contrôlée.")
     document.save(destination_path)
 
 
 def safe_stem(value: str) -> str:
     compact = re.sub(r"[^A-Za-z0-9À-ÿ_-]+", "_", value.strip())
     return compact.strip("_")[:72] or "destinataire"
-
-
-def warning_for_recipient(name: str) -> str | None:
-    if len(name.strip()) > 30:
-        return "Nom long : vérifiez l’aperçu, un retour à la ligne peut être nécessaire."
-    return None
 
 
 def convert_to_pdf(docx_files: list[Path], pdf_dir: Path) -> list[Path]:
@@ -151,10 +204,47 @@ def merge_pdfs(pdf_files: list[Path], output_path: Path) -> None:
         writer.write(stream)
 
 
+def rows_from_headers(headers: list[str], records: list[list[object]]) -> dict:
+    normalized_headers = [header.strip() for header in headers]
+    if not any(normalized_headers):
+        raise ValueError("La source ne contient aucun en-tête exploitable.")
+    normalized = [header.casefold() for header in normalized_headers]
+    if "destinataire" not in normalized:
+        raise ValueError("Aucune colonne « Destinataire » n’a été trouvée.")
+    destination_index = normalized.index("destinataire")
+    rows = []
+    recipients = []
+    for row_number, row in enumerate(records, start=2):
+        values = {
+            header: "" if index >= len(row) or row[index] is None else str(row[index]).strip()
+            for index, header in enumerate(normalized_headers)
+            if header
+        }
+        if not any(values.values()):
+            continue
+        name = values.get(normalized_headers[destination_index], "")
+        issues = [] if name else ["Destinataire manquant."]
+        row_data = {"rowNumber": row_number, "values": values, "name": name, "issues": issues}
+        rows.append(row_data)
+        if name:
+            recipients.append({"name": name, "warning": warning_for_values({REQUIRED_FIELD: name})[0] if warning_for_values({REQUIRED_FIELD: name}) else None})
+    if not rows:
+        raise ValueError("La liste ne contient aucune ligne exploitable.")
+    return {"headers": normalized_headers, "columnName": normalized_headers[destination_index], "rows": rows, "recipients": recipients}
+
+
 def inspect_model(args: argparse.Namespace) -> dict:
     document = Document(args.template)
-    count = token_count(document)
-    return {"placeholder": TOKEN, "placeholderCount": count, "valid": count == 1}
+    fields, counts, malformed = inspect_fields(document)
+    valid = REQUIRED_FIELD in fields and not malformed
+    return {
+        "fields": fields,
+        "fieldCounts": counts,
+        "invalidFields": malformed,
+        "placeholder": f"{{{{{REQUIRED_FIELD}}}}}",
+        "placeholderCount": counts.get(REQUIRED_FIELD, 0),
+        "valid": valid,
+    }
 
 
 def inspect_excel(args: argparse.Namespace) -> dict:
@@ -165,32 +255,37 @@ def inspect_excel(args: argparse.Namespace) -> dict:
         headers = ["" if value is None else str(value).strip() for value in next(iterator)]
     except StopIteration:
         raise ValueError("Le fichier Excel est vide.")
-    normalised = [header.casefold() for header in headers]
-    if "destinataire" not in normalised:
-        raise ValueError("Aucune colonne « Destinataire » n’a été trouvée.")
-    destination_index = normalised.index("destinataire")
-    recipients = []
-    for row in iterator:
-        value = row[destination_index] if destination_index < len(row) else None
-        if value is None or not str(value).strip():
-            continue
-        name = str(value).strip()
-        recipients.append({"name": name, "warning": warning_for_recipient(name)})
-    if not recipients:
-        raise ValueError("La colonne « Destinataire » ne contient aucun nom exploitable.")
-    return {"headers": headers, "columnName": headers[destination_index], "recipients": recipients}
+    return rows_from_headers(headers, [list(row) for row in iterator])
+
+
+def inspect_pasted_table(args: argparse.Namespace) -> dict:
+    content = Path(args.table).read_text(encoding="utf-8").strip()
+    if not content:
+        raise ValueError("Le tableau collé est vide.")
+    lines = [line for line in content.splitlines() if line.strip()]
+    if len(lines) < 2:
+        raise ValueError("Collez une ligne d’en-têtes et au moins une ligne de données.")
+    candidates = ["\t", ";", ",", "|"]
+    delimiter = max(candidates, key=lambda candidate: lines[0].count(candidate))
+    if lines[0].count(delimiter) == 0:
+        raise ValueError("Séparez les colonnes avec des tabulations, des points-virgules, des virgules ou le caractère |.")
+    parsed = list(csv.reader(io.StringIO("\n".join(lines)), delimiter=delimiter))
+    headers = [cell.strip() for cell in parsed[0]]
+    return rows_from_headers(headers, parsed[1:])
 
 
 def preview(args: argparse.Namespace) -> dict:
     output_docx = Path(args.output_docx)
     output_pdf = Path(args.output_pdf)
     output_docx.parent.mkdir(parents=True, exist_ok=True)
-    create_letter(Path(args.template), output_docx, args.recipient)
+    values = json.loads(Path(args.values_json).read_text(encoding="utf-8"))
+    cleaned_values = clean_values(values)
+    create_letter(Path(args.template), output_docx, cleaned_values)
     convert_to_pdf([output_docx], output_pdf.parent)
     generated_pdf = output_pdf.parent / f"{output_docx.stem}.pdf"
     if generated_pdf != output_pdf:
         generated_pdf.replace(output_pdf)
-    return {"docx": str(output_docx), "pdf": str(output_pdf), "warning": warning_for_recipient(args.recipient)}
+    return {"docx": str(output_docx), "pdf": str(output_pdf), "warnings": warning_for_values(cleaned_values)}
 
 
 def generate(args: argparse.Namespace) -> dict:
@@ -202,11 +297,13 @@ def generate(args: argparse.Namespace) -> dict:
         raise ValueError("La campagne ne contient aucun destinataire.")
     docx_files = []
     for position, recipient in enumerate(recipients, start=1):
-        name = str(recipient["name"]).strip()
+        raw_values = recipient.get("values", recipient)
+        values = clean_values(raw_values)
+        name = values.get(REQUIRED_FIELD, "")
         if not name:
             continue
         output_path = output_dir / f"Lettre_{position:03d}_{safe_stem(name)}.docx"
-        create_letter(template_path, output_path, name)
+        create_letter(template_path, output_path, values)
         docx_files.append(output_path)
     if not docx_files:
         raise ValueError("Aucun courrier n’a pu être généré.")
@@ -230,9 +327,12 @@ def main() -> None:
     inspect_excel_parser = subparsers.add_parser("inspect-excel")
     inspect_excel_parser.add_argument("--excel", required=True)
 
+    inspect_table_parser = subparsers.add_parser("inspect-table")
+    inspect_table_parser.add_argument("--table", required=True)
+
     preview_parser = subparsers.add_parser("preview")
     preview_parser.add_argument("--template", required=True)
-    preview_parser.add_argument("--recipient", required=True)
+    preview_parser.add_argument("--values-json", required=True)
     preview_parser.add_argument("--output-docx", required=True)
     preview_parser.add_argument("--output-pdf", required=True)
 
@@ -248,6 +348,8 @@ def main() -> None:
         result = inspect_model(args)
     elif args.command == "inspect-excel":
         result = inspect_excel(args)
+    elif args.command == "inspect-table":
+        result = inspect_pasted_table(args)
     elif args.command == "preview":
         result = preview(args)
     else:

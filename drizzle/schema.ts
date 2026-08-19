@@ -33,6 +33,7 @@ export const letterTemplates = mysqlTable("letter_templates", {
   fileKey: varchar("fileKey", { length: 500 }).notNull(),
   fileUrl: varchar("fileUrl", { length: 600 }).notNull(),
   placeholderCount: int("placeholderCount").notNull(),
+  fieldsJson: text("fieldsJson"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, table => [index("letter_templates_user_created_idx").on(table.userId, table.createdAt)]);
 
@@ -45,6 +46,8 @@ export const campaigns = mysqlTable("campaigns", {
   name: varchar("name", { length: 140 }).notNull(),
   excelFileKey: varchar("excelFileKey", { length: 500 }).notNull(),
   excelFileUrl: varchar("excelFileUrl", { length: 600 }).notNull(),
+  dataSourceType: varchar("dataSourceType", { length: 20 }).default("excel").notNull(),
+  mappingsJson: text("mappingsJson"),
   recipientCount: int("recipientCount").notNull(),
   status: mysqlEnum("status", campaignStatus).default("generating").notNull(),
   zipFileKey: varchar("zipFileKey", { length: 500 }),
@@ -62,6 +65,7 @@ export const campaignRecipients = mysqlTable("campaign_recipients", {
   id: int("id").autoincrement().primaryKey(),
   campaignId: varchar("campaignId", { length: 32 }).notNull(),
   name: varchar("name", { length: 350 }).notNull(),
+  valuesJson: text("valuesJson"),
   warning: text("warning"),
   position: int("position").notNull(),
   status: mysqlEnum("status", recipientStatus).default("to_send").notNull(),

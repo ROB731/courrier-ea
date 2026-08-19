@@ -74,6 +74,7 @@ export default function CampaignDetail({ id }: { id: string }) {
               <div key={recipient.id} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:px-7">
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium text-[#2c3e34]">{recipient.position}. {recipient.name}</p>
+                  {Object.entries(recipient.values).filter(([field, value]) => field !== "DESTINATAIRE" && value).slice(0, 3).length > 0 && <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[#728077]">{Object.entries(recipient.values).filter(([field, value]) => field !== "DESTINATAIRE" && value).slice(0, 3).map(([field, value]) => <span key={field}>{field.replaceAll("_", " ").toLowerCase()} : {value}</span>)}</div>}
                   {recipient.warning && <p className="mt-1 text-xs leading-5 text-[#aa623b]"><TriangleAlert className="mr-1 inline h-3 w-3" />{recipient.warning}</p>}
                 </div>
                 <button
