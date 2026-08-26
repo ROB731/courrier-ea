@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildRecipientCsv, buildRecipientPrintHtml, buildRecipientRows, printRecipientList } from "./recipientListExport";
+import { buildRecipientCsv, buildRecipientPrintHtml, buildRecipientRows, downloadRecipientExcel, printRecipientList } from "./recipientListExport";
 
 const recipients = [
   { sourceRow: 2, name: "Entreprise A", values: { DESTINATAIRE: "Entreprise A", TELEPHONE: "+225 01 02" } },
@@ -7,6 +7,10 @@ const recipients = [
 ];
 
 describe("recipientListExport", () => {
+  it("expose l’export Excel attendu par l’assistant de campagne", () => {
+    expect(downloadRecipientExcel).toBeTypeOf("function");
+  });
+
   it("crée un CSV avec les champs filtrés et les valeurs des destinataires", () => {
     expect(buildRecipientCsv(recipients, ["DESTINATAIRE", "TELEPHONE"])).toContain('"Ligne";"DESTINATAIRE";"TELEPHONE"\n"2";"Entreprise A";"+225 01 02"');
   });

@@ -65,6 +65,12 @@ vi.mock("@/lib/trpc", () => ({
 import NewCampaign from "./NewCampaign";
 
 describe("NewCampaign — contrôle automatique après import Excel", () => {
+  it("charge réellement NewCampaign avec l’export Excel requis", () => {
+    render(<NewCampaign />);
+    expect(screen.getByRole("heading", { name: /Préparez vos courriers/ })).toBeTruthy();
+    expect(screen.getByText("Importer la liste Excel")).toBeTruthy();
+  });
+
   beforeEach(() => {
     testState.sourceHeaders = ["Entreprise", "Téléphone"];
     testState.prepareCalls = [];

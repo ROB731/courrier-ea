@@ -121,3 +121,27 @@
 - [x] Sauvegarder un checkpoint après le repositionnement visible de la barre de recherche, puis publier cette version.
 - [x] Pousser la révision finale sur GitHub et vérifier que le hash distant correspond au hash local.
 - [x] Recontrôler la route publiée concernée pour confirmer la barre entre export et tableau, son compteur et le filtrage.
+- [x] Diagnostiquer le blocage général signalé sur le parcours de campagne et les actions du tableau.
+- [x] Reproduire les clics sans effet et identifier la cause exacte dans les logs ou le code.
+- [x] Corriger les bugs confirmés et ajouter les tests de non-régression nécessaires.
+- [x] Valider et publier une version réellement fonctionnelle.
+- [x] Corriger l’erreur de module `downloadRecipientExcel` qui peut empêcher le chargement complet de l’écran de campagne.
+- [x] Vérifier que les boutons du tableau et la recherche restent utilisables après correction du module.
+- [x] Publier un nouveau checkpoint après le diagnostic et vérifier la route `/campagnes/nouvelle` sur cette version.
+- [x] Pousser la révision finale sur GitHub et vérifier l’alignement du hash distant après cette publication.
+- [x] Vérifier dans un navigateur authentifié que la modale, la recherche du tableau et les boutons répondent réellement.
+- [x] Ajouter un test de non-régression ciblant le chargement de NewCampaign avec l’import `downloadRecipientExcel`.
+- [x] Sauvegarder un nouveau checkpoint après les derniers changements de diagnostic et de tests, puis vérifier `/campagnes/nouvelle` sur cette version publiée.
+- [x] Pousser `main` vers GitHub et comparer explicitement le hash local au hash distant.
+- [x] Valider dans un navigateur authentifié fonctionnel la modale, la recherche et les boutons du tableau.
+- [x] Ajouter un test qui monte NewCampaign et protège explicitement l’import `downloadRecipientExcel`.
+- [x] Sauvegarder un nouveau checkpoint après les derniers changements et vérifier `/campagnes/nouvelle` sur cette version publiée.
+- [x] Pousser `main` puis comparer explicitement `git rev-parse HEAD` avec `git ls-remote github refs/heads/main`.
+- [x] Ajouter un test qui rend réellement NewCampaign et vérifie son chargement complet.
+- [x] Vérifier dans un navigateur authentifié fonctionnel que la modale, la recherche et les boutons réagissent réellement.
+- [x] Sauvegarder un checkpoint après les derniers changements, incluant le test de rendu réel de NewCampaign, puis vérifier `/campagnes/nouvelle`.
+- [x] Pousser ensuite `main` vers GitHub et comparer explicitement les hashes local et distant.
+- [x] Retenter la vérification authentifiée de la modale et des actions ; si le navigateur reste indisponible, conserver la validation locale comme preuve et demander un test utilisateur.
+- [x] Sauvegarder un nouveau checkpoint après le test de rendu réel de NewCampaign et vérifier `/campagnes/nouvelle` sur la version publiée.
+- [x] Pousser ensuite `main` et comparer explicitement `git rev-parse HEAD` avec `git ls-remote github refs/heads/main`.
+- [x] Retenter une vérification authentifiée ; si l’extension reste indisponible, informer l’utilisateur qu’un test connecté manuel est requis.
