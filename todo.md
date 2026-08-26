@@ -58,7 +58,12 @@
 - [x] Rendre le récapitulatif de génération dépendant de la liste finale manipulée.
 - [x] Corriger la configuration Docker pour rétablir la publication de l’application.
 - [x] Tester le tri post-import et la construction de production corrigée.
-- [ ] Déclencher une publication explicite après la correction Docker et vérifier son résultat.
-- [ ] Documenter que la version publiée correspond bien à l’image reconstruite avec le Dockerfile corrigé.
+- [x] Déclencher une publication explicite après la correction Docker et vérifier son résultat.
+- [x] Documenter que la version publiée correspond bien à l’image reconstruite avec le Dockerfile corrigé.
+- [x] Conserver une preuve explicite de la publication réussie après correction du Dockerfile.
+- [x] Vérifier la version publique après publication et documenter le lien avec le correctif Docker.
+- [x] Déclencher une nouvelle publication de validation et conserver le résultat de succès du déploiement.
+- [x] Contrôler la route publique après cette publication de validation et consigner le résultat.
+- [x] Recontrôler une route publique après le succès explicite du déploiement et documenter ce résultat.
 - [x] Conserver l’ajout manuel disponible dès l’import de la source, y compris après suppression complète de la liste.
 - [x] Ajouter des actions de tri groupées pour les nouveaux, les déjà envoyés et les correspondances à vérifier.
