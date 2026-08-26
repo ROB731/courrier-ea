@@ -104,3 +104,14 @@
 - [x] Sauvegarder un checkpoint après les changements du répertoire et publier cette version.
 - [x] Pousser la révision finale du répertoire sur GitHub et vérifier l’alignement du hash distant.
 - [x] Recontrôler la route /destinataires sur la version publiée.
+- [x] Ajouter une barre de recherche locale directement dans le tableau des destinataires de la revue.
+- [x] Afficher clairement le nombre de résultats correspondant à la recherche du tableau.
+- [x] Tester la recherche, l’effacement du terme et l’état sans résultat.
+- [x] Valider et publier la recherche du tableau.
+- [x] Ajouter au test NewCampaign la recherche du tableau, l’effacement du terme et l’état sans résultat.
+- [x] Sauvegarder un checkpoint après l’ajout de la recherche du tableau et publier cette version.
+- [x] Pousser la révision finale sur GitHub et vérifier l’alignement du hash distant après publication.
+- [x] Recontrôler la route publiée concernée après le nouveau checkpoint.
+- [x] Sauvegarder un checkpoint après l’ajout de la recherche du tableau, puis publier cette version.
+- [x] Pousser la révision finale sur GitHub et vérifier que le hash distant correspond au hash local.
+- [x] Recontrôler la route publiée concernée après publication pour confirmer la recherche du tableau.

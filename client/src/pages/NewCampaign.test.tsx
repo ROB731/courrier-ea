@@ -82,6 +82,14 @@ describe("NewCampaign — contrôle automatique après import Excel", () => {
     expect(screen.getByRole("dialog")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Contrôle de la liste importée" })).toBeTruthy();
     expect(screen.getByText("Entreprise test")).toBeTruthy();
+    const tableSearch = screen.getByLabelText("Rechercher dans le tableau par nom ou e-mail");
+    fireEvent.change(tableSearch, { target: { value: "déjà envoyée" } });
+    expect(screen.getByText("Entreprise déjà envoyée")).toBeTruthy();
+    expect(screen.queryByText("Entreprise test")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Effacer la recherche du tableau" }));
+    fireEvent.change(tableSearch, { target: { value: "inexistant" } });
+    await waitFor(() => expect(screen.getByText(/Aucun destinataire ne correspond à ce filtre/)).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Effacer la recherche du tableau" }));
     fireEvent.click(screen.getByRole("button", { name: "Tout retirer" }));
     expect(screen.getByRole("button", { name: "Continuer avec 0 destinataire" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Tout inclure" }));
