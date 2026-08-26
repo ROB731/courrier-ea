@@ -96,3 +96,8 @@
 - [x] Exclure par défaut les destinataires déjà envoyés de l’export et de l’impression, sauf réintégration explicite.
 - [x] Tester les actions par ligne Retirer et Réintégrer avec une mise à jour visible de la liste.
 - [x] Produire un vrai fichier Excel .xlsx pour la liste filtrée.
+
+- [ ] Ajouter une barre de recherche des destinataires par nom ou e-mail.
+- [ ] Ajouter une modale de confirmation avant suppression d’un destinataire.
+- [ ] Ajouter les tests de recherche et de suppression confirmée.
+- [ ] Valider et publier les améliorations du répertoire.
