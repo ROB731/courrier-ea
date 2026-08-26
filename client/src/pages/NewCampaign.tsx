@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { readFileAsBase64 } from "@/lib/files";
+import { isAutoPreparationReady } from "@/lib/campaignAutoPreparation";
 import { trpc } from "@/lib/trpc";
 import {
   AlertTriangle,
@@ -21,7 +22,7 @@ import {
   TableProperties,
   UploadCloud,
 } from "lucide-react";
-import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import React, { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 
 type SourceRow = { rowNumber: number; values: Record<string, string>; name: string; issues: string[] };
@@ -81,6 +82,7 @@ export default function NewCampaign() {
   const [notice, setNotice] = useState("");
   const [showRecipients, setShowRecipients] = useState(false);
   const [manualValues, setManualValues] = useState<Record<string, string>>({});
+  const lastAutoPreparationKey = useRef<string | null>(null);
   const selectedTemplate = templates.find(template => template.id === templateId);
   const fields = selectedTemplate?.fields ?? uploadedFields;
   const validRecipients = useMemo(() => recipients.filter(recipient => recipient.issues.length === 0), [recipients]);
@@ -90,6 +92,16 @@ export default function NewCampaign() {
   const confirmedSentRecipients = useMemo(() => validRecipients.filter(recipient => recipient.dedupeStatus === "sent_confirmed"), [validRecipients]);
   const reviewRecipients = useMemo(() => validRecipients.filter(recipient => recipient.dedupeStatus === "review"), [validRecipients]);
   const mappedRequired = Boolean(mappings[REQUIRED_FIELD]);
+  const autoPreparationReady = isAutoPreparationReady({
+    templateId,
+    fields,
+    headers: source?.headers ?? [],
+    rowCount: source?.rows.length ?? 0,
+    mappings,
+  });
+  const autoPreparationKey = autoPreparationReady && source
+    ? JSON.stringify({ templateId, sourceFileKey: source.fileKey, mappings: Object.entries(mappings).sort(([left], [right]) => left.localeCompare(right)) })
+    : null;
   const canGenerate = Boolean(campaignName.trim() && templateId && source && includedRecipients.length && mappedRequired);
 
   const uploadTemplate = trpc.courrier.uploadTemplate.useMutation({
@@ -106,6 +118,7 @@ export default function NewCampaign() {
   const prepare = trpc.courrier.prepareRecipients.useMutation({
     onSuccess: result => {
       setRecipients(result.recipients as PreparedRecipient[]);
+      setShowRecipients(true);
       setPreviewIndex("0");
       setPreviewUrl("");
       setPreviewWarnings([]);
@@ -133,16 +146,23 @@ export default function NewCampaign() {
   }, [templateId, source?.fileKey]);
 
   useEffect(() => {
+    if (!source || !autoPreparationReady || !autoPreparationKey || prepare.isPending || lastAutoPreparationKey.current === autoPreparationKey) return;
+    lastAutoPreparationKey.current = autoPreparationKey;
+    prepare.mutate({ templateId, headers: source.headers, rows: source.rows.map(row => ({ rowNumber: row.rowNumber, values: row.values })), mappings });
+  }, [autoPreparationKey, autoPreparationReady, mappings, prepare, source, templateId]);
+
+  useEffect(() => {
     setManualValues(Object.fromEntries(fields.map(field => [field, ""])));
   }, [fields.join("|")]);
 
   function applySource(result: SourceData) {
+    lastAutoPreparationKey.current = null;
     setSource(result);
     setRecipients([]);
     setPreviewUrl("");
     setPreviewWarnings([]);
     setMappings(suggestedMappings(fields, result.headers));
-    setNotice(`${result.rows.length} ligne${result.rows.length > 1 ? "s" : ""} détectée${result.rows.length > 1 ? "s" : ""}. Associez maintenant chaque champ du courrier à une colonne.`);
+    setNotice(`${result.rows.length} ligne${result.rows.length > 1 ? "s" : ""} détectée${result.rows.length > 1 ? "s" : ""}. Le contrôle et le tri se lanceront automatiquement dès que {{DESTINATAIRE}} sera associé.`);
   }
 
   async function handleTemplate(event: ChangeEvent<HTMLInputElement>) {
@@ -289,9 +309,9 @@ export default function NewCampaign() {
               {source && <div className="mt-4 rounded-xl border border-[#dce8df] bg-[#f5f7f4] p-4"><p className="text-sm font-medium text-[#315e51]">{source.rows.length} ligne{source.rows.length > 1 ? "s" : ""} détectée{source.rows.length > 1 ? "s" : ""} · source {source.sourceType === "excel" ? "Excel" : source.sourceType === "directory" ? "répertoire" : "collée"}</p><div className="mt-3 flex flex-wrap gap-2">{source.headers.map(header => <span key={header} className="rounded-md bg-white px-2.5 py-1 text-xs text-[#5c6861] shadow-sm">{header}</span>)}</div></div>}
             </StepCard>
 
-            {source && fields.length > 0 && <StepCard number="4" title="Associer les colonnes aux champs" description="Vérifiez la correspondance. Seul {{DESTINATAIRE}} est obligatoire ; les autres champs peuvent rester vides.">
+            {source && fields.length > 0 && <StepCard number="4" title="Contrôle automatique des destinataires" description="Le contrôle démarre automatiquement dès que {{DESTINATAIRE}} est associé. Vous pouvez ensuite ajuster les correspondances, puis recontrôler si nécessaire.">
               <div className="space-y-3">{fields.map(field => <div key={field} className="grid gap-2 rounded-xl border border-[#e7e3da] bg-[#fcfbf8] p-3 sm:grid-cols-[0.82fr_1.1fr] sm:items-center"><div><p className="text-sm font-medium text-[#31463a]">{`{{${field}}}`}{field === REQUIRED_FIELD && <span className="ml-2 text-xs text-[#a2573b]">Obligatoire</span>}</p><p className="mt-0.5 text-xs text-[#7c867e]">{labelForField(field)}</p></div><select value={mappings[field] ?? ""} onChange={event => updateMapping(field, event.target.value)} className="h-10 rounded-lg border border-[#dad7cf] bg-white px-3 text-sm text-[#43554b]"><option value="">{field === REQUIRED_FIELD ? "Choisir une colonne" : "Ne pas utiliser ce champ"}</option>{source.headers.map(header => <option value={header} key={header}>{header}</option>)}</select></div>)}</div>
-              <Button onClick={validateRows} disabled={!mappedRequired || prepare.isPending} className="mt-4 h-10 rounded-xl bg-[#315e51] hover:bg-[#234b3f]">{prepare.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ListChecks className="mr-2 h-4 w-4" />}Vérifier les données et préparer les courriers</Button>
+              <Button onClick={validateRows} disabled={!mappedRequired || prepare.isPending} className="mt-4 h-10 rounded-xl bg-[#315e51] hover:bg-[#234b3f]">{prepare.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ListChecks className="mr-2 h-4 w-4" />}Recontrôler les données</Button>
               {prepare.error && <ErrorMessage text={prepare.error.message} />}
             </StepCard>}
 

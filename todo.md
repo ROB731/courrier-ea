@@ -75,3 +75,12 @@
 - [x] Sauvegarder le suivi de synchronisation dans un checkpoint final.
 - [x] Pousser le checkpoint final vers GitHub et vérifier que les hashes correspondent.
 - [x] Vérifier le domaine publié après le checkpoint final.
+- [x] Reproduire et diagnostiquer le dysfonctionnement signalé dans le parcours de création de campagne.
+- [x] Corriger les problèmes confirmés et ajouter les tests de non-régression associés.
+- [x] Vérifier le parcours corrigé en développement et en production.
+- [x] Déclencher automatiquement la préparation et le tri après import Excel lorsque la correspondance obligatoire est disponible.
+- [x] Ouvrir directement la revue des destinataires après le contrôle automatique.
+- [x] Tester le tri automatique pour l’import Excel et conserver le contrôle manuel en cas de correspondance incomplète.
+- [x] Ajouter un test d’intégration du parcours import Excel, contrôle automatique et ouverture de revue.
+- [x] Ajouter un test de correspondance incomplète garantissant la disponibilité du recontrôle manuel.
+- [x] Vérifier le parcours corrigé dans un navigateur authentifié lorsque la session est accessible.
