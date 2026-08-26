@@ -69,15 +69,20 @@ describe("NewCampaign — contrôle automatique après import Excel", () => {
 
   afterEach(() => cleanup());
 
-  it("prépare les destinataires et ouvre la revue dès que Destinataire est reconnu", async () => {
+  it("prépare les destinataires, ouvre le modal et applique les décisions de tri", async () => {
     render(<NewCampaign />);
     fireEvent.change(screen.getByLabelText("Choisir un modèle"), { target: { value: "template-12345678" } });
     const input = document.querySelectorAll('input[type="file"]')[1] as HTMLInputElement;
     fireEvent.change(input, { target: { files: [new File(["contenu"], "destinataires.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })] } });
 
     await waitFor(() => expect(testState.prepareCalls).toHaveLength(1));
-    expect(screen.getByRole("button", { name: "Masquer la revue" })).toBeTruthy();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Contrôle de la liste importée" })).toBeTruthy();
     expect(screen.getByText("Entreprise test")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Tout retirer" }));
+    expect(screen.getByRole("button", { name: "Continuer avec 0 destinataire" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Tout inclure" }));
+    expect(screen.getByRole("button", { name: "Continuer avec 1 destinataire" })).toBeTruthy();
   });
 
   it("n’exécute pas le contrôle avant une correspondance obligatoire valide et conserve le recontrôle manuel", async () => {

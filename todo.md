@@ -84,3 +84,7 @@
 - [x] Ajouter un test d’intégration du parcours import Excel, contrôle automatique et ouverture de revue.
 - [x] Ajouter un test de correspondance incomplète garantissant la disponibilité du recontrôle manuel.
 - [x] Vérifier le parcours corrigé dans un navigateur authentifié lorsque la session est accessible.
+- [x] Remplacer la revue post-import en page par un modal qui s’ouvre automatiquement après le contrôle Excel.
+- [x] Mettre dans le modal les actions d’inclusion, d’exclusion, de réintégration, de retrait et d’ajout manuel.
+- [x] Garantir que les boutons du modal modifient immédiatement la liste finale de génération.
+- [x] Ajouter des tests d’interaction du modal et vérifier le nouveau parcours en navigateur.
