@@ -97,7 +97,10 @@
 - [x] Tester les actions par ligne Retirer et Réintégrer avec une mise à jour visible de la liste.
 - [x] Produire un vrai fichier Excel .xlsx pour la liste filtrée.
 
-- [ ] Ajouter une barre de recherche des destinataires par nom ou e-mail.
-- [ ] Ajouter une modale de confirmation avant suppression d’un destinataire.
-- [ ] Ajouter les tests de recherche et de suppression confirmée.
-- [ ] Valider et publier les améliorations du répertoire.
+- [x] Ajouter une barre de recherche des destinataires par nom ou e-mail.
+- [x] Ajouter une modale de confirmation avant suppression d’un destinataire.
+- [x] Ajouter les tests de recherche et de suppression confirmée.
+- [x] Valider et publier les améliorations du répertoire.
+- [x] Sauvegarder un checkpoint après les changements du répertoire et publier cette version.
+- [x] Pousser la révision finale du répertoire sur GitHub et vérifier l’alignement du hash distant.
+- [x] Recontrôler la route /destinataires sur la version publiée.
