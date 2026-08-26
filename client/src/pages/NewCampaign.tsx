@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { readFileAsBase64 } from "@/lib/files";
 import { isAutoPreparationReady } from "@/lib/campaignAutoPreparation";
+import { buildRecipientPrintHtml, downloadRecipientExcel, printRecipientList } from "@/lib/recipientListExport";
 import { trpc } from "@/lib/trpc";
 import {
   AlertTriangle,
@@ -14,12 +15,14 @@ import {
   ChevronRight,
   CircleCheck,
   ClipboardPaste,
+  Download,
   Eye,
   FileSpreadsheet,
   FileText,
   ListChecks,
   Loader2,
   Sparkles,
+  Printer,
   TableProperties,
   UploadCloud,
 } from "lucide-react";
@@ -29,6 +32,7 @@ import { useLocation } from "wouter";
 type SourceRow = { rowNumber: number; values: Record<string, string>; name: string; issues: string[] };
 type SourceData = { fileKey: string; fileUrl: string; sourceType: "excel" | "paste" | "directory"; columnName: string; headers: string[]; rows: SourceRow[] };
 type DedupeStatus = "new" | "sent_confirmed" | "review";
+type RecipientView = "all" | DedupeStatus | "excluded" | "invalid";
 type PreparedRecipient = { sourceRow: number; name: string; values: Record<string, string>; warning: string | null; issues: string[]; includeInGeneration: boolean; dedupeStatus: DedupeStatus; dedupeReason: string | null; matchedCampaignName: string | null };
 
 const REQUIRED_FIELD = "DESTINATAIRE";
@@ -82,6 +86,7 @@ export default function NewCampaign() {
   const [previewWarnings, setPreviewWarnings] = useState<string[]>([]);
   const [notice, setNotice] = useState("");
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [recipientView, setRecipientView] = useState<RecipientView>("all");
   const [manualValues, setManualValues] = useState<Record<string, string>>({});
   const lastAutoPreparationKey = useRef<string | null>(null);
   const selectedTemplate = templates.find(template => template.id === templateId);
@@ -92,6 +97,13 @@ export default function NewCampaign() {
   const excludedRecipients = useMemo(() => validRecipients.filter(recipient => !recipient.includeInGeneration), [validRecipients]);
   const confirmedSentRecipients = useMemo(() => validRecipients.filter(recipient => recipient.dedupeStatus === "sent_confirmed"), [validRecipients]);
   const reviewRecipients = useMemo(() => validRecipients.filter(recipient => recipient.dedupeStatus === "review"), [validRecipients]);
+  const newRecipients = useMemo(() => validRecipients.filter(recipient => recipient.dedupeStatus === "new"), [validRecipients]);
+  const visibleRecipients = useMemo(() => recipients.filter(recipient => {
+    if (recipientView === "all") return true;
+    if (recipientView === "invalid") return recipient.issues.length > 0;
+    if (recipientView === "excluded") return recipient.issues.length === 0 && !recipient.includeInGeneration;
+    return recipient.issues.length === 0 && recipient.dedupeStatus === recipientView;
+  }), [recipientView, recipients]);
   const mappedRequired = Boolean(mappings[REQUIRED_FIELD]);
   const autoPreparationReady = isAutoPreparationReady({
     templateId,
@@ -236,17 +248,23 @@ export default function NewCampaign() {
   }
 
   function toggleRecipientInclusion(sourceRow: number) {
+    const selectedRecipient = recipients.find(recipient => recipient.sourceRow === sourceRow);
+    if (!selectedRecipient || selectedRecipient.issues.length) return;
+    const isReintegrated = !selectedRecipient.includeInGeneration;
     setRecipients(current => current.map(recipient => recipient.sourceRow === sourceRow && recipient.issues.length === 0 ? { ...recipient, includeInGeneration: !recipient.includeInGeneration } : recipient));
     setPreviewUrl("");
     setPreviewWarnings([]);
     setPreviewIndex("0");
+    setNotice(`${selectedRecipient.name || "Ce destinataire"} a été ${isReintegrated ? "réintégré à la génération" : "retiré de la génération"}.`);
   }
 
   function removeRecipient(sourceRow: number) {
+    const selectedRecipient = recipients.find(recipient => recipient.sourceRow === sourceRow);
     setRecipients(current => current.filter(recipient => recipient.sourceRow !== sourceRow));
     setPreviewUrl("");
     setPreviewWarnings([]);
     setPreviewIndex("0");
+    setNotice(`${selectedRecipient?.name || "Le destinataire"} a été supprimé de la liste.`);
   }
 
   function setAllRecipientInclusion(includeInGeneration: boolean) {
@@ -254,6 +272,7 @@ export default function NewCampaign() {
     setPreviewUrl("");
     setPreviewWarnings([]);
     setPreviewIndex("0");
+    setNotice(includeInGeneration ? "Tous les destinataires valides sont inclus dans la génération." : "Tous les destinataires valides sont retirés de la génération.");
   }
 
   function setCategoryInclusion(status: DedupeStatus, includeInGeneration: boolean) {
@@ -261,6 +280,8 @@ export default function NewCampaign() {
     setPreviewUrl("");
     setPreviewWarnings([]);
     setPreviewIndex("0");
+    setRecipientView(status);
+    setNotice(status === "sent_confirmed" ? "Les doublons déjà envoyés ont été réintégrés." : "Les destinataires à vérifier ont été inclus.");
   }
 
   function keepOnlyNewRecipients() {
@@ -268,6 +289,35 @@ export default function NewCampaign() {
     setPreviewUrl("");
     setPreviewWarnings([]);
     setPreviewIndex("0");
+    setRecipientView("new");
+    setNotice("Seuls les nouveaux destinataires restent sélectionnés pour la génération.");
+  }
+
+  function clearRecipients() {
+    setRecipients([]);
+    setPreviewUrl("");
+    setPreviewWarnings([]);
+    setPreviewIndex("0");
+    setRecipientView("all");
+    setNotice("Toute la liste a été supprimée. Vous pouvez importer une autre source ou ajouter une fiche manuellement.");
+  }
+
+  const exportRecipients = useMemo(() => visibleRecipients.filter(recipient => recipient.issues.length === 0 && recipient.includeInGeneration), [visibleRecipients]);
+
+  async function exportFilteredRecipients() {
+    if (!exportRecipients.length) return;
+    await downloadRecipientExcel(exportRecipients, fields, `courrier-ea-${recipientView}-destinataires.xlsx`);
+    setNotice(`${exportRecipients.length} destinataire${exportRecipients.length > 1 ? "s" : ""} a/ont été exporté${exportRecipients.length > 1 ? "s" : ""} dans un fichier Excel.`);
+  }
+
+  function printFilteredRecipients() {
+    if (!exportRecipients.length) return;
+    const title = recipientView === "new" ? "Nouveaux destinataires" : recipientView === "sent_confirmed" ? "Doublons réintégrés" : "Destinataires sélectionnés";
+    if (!printRecipientList(buildRecipientPrintHtml(exportRecipients, fields, title))) {
+      setNotice("L’ouverture de la fenêtre d’impression a été bloquée. Autorisez les fenêtres surgissantes puis réessayez.");
+      return;
+    }
+    setNotice(`La liste de ${exportRecipients.length} destinataire${exportRecipients.length > 1 ? "s" : ""} est prête à imprimer.`);
   }
 
   function addManualRecipient() {
@@ -353,9 +403,11 @@ export default function NewCampaign() {
 
                 <section className="mt-5 rounded-2xl border border-[#e5e0d6] bg-white p-4">
                   <div className="flex flex-wrap items-center gap-2"><Badge className="border-0 bg-[#e3f0e8] text-[#2c7250]">{includedRecipients.length} à générer</Badge>{confirmedSentRecipients.length > 0 && <Badge className="border-0 bg-[#f7eadf] text-[#99633a]">{confirmedSentRecipients.length} déjà envoyé{confirmedSentRecipients.length > 1 ? "s" : ""}</Badge>}{reviewRecipients.length > 0 && <Badge className="border-0 bg-[#fff3df] text-[#9b6d23]">{reviewRecipients.length} à vérifier</Badge>}{invalidRecipients.length > 0 && <Badge className="border-0 bg-[#fff0ed] text-[#a24e38]">{invalidRecipients.length} à corriger</Badge>}</div>
-                  <div className="mt-4 flex flex-wrap gap-2 rounded-xl bg-[#fcfbf8] p-3"><Button size="sm" variant="outline" onClick={() => setAllRecipientInclusion(true)} className="h-8 border-[#bfd7c5] bg-white text-[#347355] hover:bg-[#f2faf4]">Tout inclure</Button><Button size="sm" variant="outline" onClick={() => setAllRecipientInclusion(false)} className="h-8 border-[#e2c9b7] bg-white text-[#a35b3f] hover:bg-[#fff6f1]">Tout retirer</Button>{confirmedSentRecipients.length > 0 && <Button size="sm" variant="outline" onClick={() => setCategoryInclusion("sent_confirmed", true)} className="h-8 border-[#d8c8a4] bg-white text-[#8b6931] hover:bg-[#fffaf0]">Réintégrer les déjà envoyés</Button>}{reviewRecipients.length > 0 && <Button size="sm" variant="outline" onClick={() => setCategoryInclusion("review", true)} className="h-8 border-[#e4cf9d] bg-white text-[#9a7027] hover:bg-[#fff9eb]">Inclure les à vérifier</Button>}<Button size="sm" variant="outline" onClick={keepOnlyNewRecipients} className="h-8 border-[#c9d8cc] bg-white text-[#3d7154] hover:bg-[#f2faf4]">Conserver seulement les nouveaux</Button><Button size="sm" variant="outline" onClick={() => { setRecipients([]); setPreviewUrl(""); setPreviewWarnings([]); }} className="h-8 border-[#ead9d1] bg-white text-[#a2503b] hover:bg-[#fff5f2]">Supprimer toute la liste</Button></div>
+                  <div className="mt-4 rounded-xl border border-[#e6e2d9] bg-[#f7f5ef] p-3"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7f704b]">Afficher la liste</p><div className="mt-2 flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => setRecipientView("all")} className={recipientView === "all" ? "h-8 border-[#315e51] bg-[#315e51] text-white hover:bg-[#234b3f]" : "h-8 border-[#d6d8d2] bg-white text-[#47564e]"}>Tous ({recipients.length})</Button><Button size="sm" variant="outline" onClick={() => setRecipientView("new")} className={recipientView === "new" ? "h-8 border-[#347355] bg-[#347355] text-white hover:bg-[#265b43]" : "h-8 border-[#bfd7c5] bg-white text-[#347355]"}>Nouveaux ({newRecipients.length})</Button><Button size="sm" variant="outline" onClick={() => setRecipientView("sent_confirmed")} className={recipientView === "sent_confirmed" ? "h-8 border-[#966039] bg-[#966039] text-white hover:bg-[#7e4f2e]" : "h-8 border-[#d8c8a4] bg-white text-[#8b6931]"}>Doublons ({confirmedSentRecipients.length})</Button><Button size="sm" variant="outline" onClick={() => setRecipientView("review")} className={recipientView === "review" ? "h-8 border-[#9a7027] bg-[#9a7027] text-white hover:bg-[#7f591b]" : "h-8 border-[#e4cf9d] bg-white text-[#9a7027]"}>À vérifier ({reviewRecipients.length})</Button><Button size="sm" variant="outline" onClick={() => setRecipientView("excluded")} className={recipientView === "excluded" ? "h-8 border-[#9d6342] bg-[#9d6342] text-white hover:bg-[#7d4d31]" : "h-8 border-[#e1cdbb] bg-white text-[#936039]"}>Retirés ({excludedRecipients.length})</Button></div></div>
+                  <div className="mt-4 flex flex-wrap gap-2 rounded-xl bg-[#fcfbf8] p-3"><Button size="sm" variant="outline" onClick={() => setAllRecipientInclusion(true)} className="h-8 border-[#bfd7c5] bg-white text-[#347355] hover:bg-[#f2faf4]">Tout inclure</Button><Button size="sm" variant="outline" onClick={() => setAllRecipientInclusion(false)} className="h-8 border-[#e2c9b7] bg-white text-[#a35b3f] hover:bg-[#fff6f1]">Tout retirer</Button>{confirmedSentRecipients.length > 0 && <Button size="sm" variant="outline" onClick={() => setCategoryInclusion("sent_confirmed", true)} className="h-8 border-[#d8c8a4] bg-white text-[#8b6931] hover:bg-[#fffaf0]">Réintégrer les déjà envoyés</Button>}{reviewRecipients.length > 0 && <Button size="sm" variant="outline" onClick={() => setCategoryInclusion("review", true)} className="h-8 border-[#e4cf9d] bg-white text-[#9a7027] hover:bg-[#fff9eb]">Inclure les à vérifier</Button>}<Button size="sm" variant="outline" onClick={keepOnlyNewRecipients} className="h-8 border-[#c9d8cc] bg-white text-[#3d7154] hover:bg-[#f2faf4]">Conserver seulement les nouveaux</Button><Button size="sm" variant="outline" onClick={clearRecipients} className="h-8 border-[#ead9d1] bg-white text-[#a2503b] hover:bg-[#fff5f2]">Supprimer toute la liste</Button></div>
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#dce8df] bg-[#f5f8f5] p-3"><p className="text-xs leading-5 text-[#557063]">{exportRecipients.length} destinataire{exportRecipients.length > 1 ? "s" : ""} de la vue actuelle sera/seront exporté{exportRecipients.length > 1 ? "s" : ""}. Les doublons restent exclus tant qu’ils ne sont pas réintégrés.</p><div className="flex gap-2"><Button size="sm" variant="outline" onClick={exportFilteredRecipients} disabled={!exportRecipients.length} className="h-8 border-[#bfd7c5] bg-white text-[#347355]"><Download className="mr-1.5 h-3.5 w-3.5" />Exporter</Button><Button size="sm" variant="outline" onClick={printFilteredRecipients} disabled={!exportRecipients.length} className="h-8 border-[#bfd7c5] bg-white text-[#347355]"><Printer className="mr-1.5 h-3.5 w-3.5" />Imprimer</Button></div></div>
                   {excludedRecipients.length > 0 && <p className="mt-3 rounded-lg bg-[#fff9f0] px-3 py-2 text-xs leading-5 text-[#8c6334]">{excludedRecipients.length} destinataire{excludedRecipients.length > 1 ? "s" : ""} restera/ resteront dans la trace, mais ne figurera/ figureront pas dans le PDF ni dans le ZIP.</p>}
-                  {prepare.isPending ? <div className="mt-5 flex items-center gap-2 rounded-xl bg-[#edf4ef] p-4 text-sm text-[#347355]"><Loader2 className="h-4 w-4 animate-spin" /> Analyse des destinataires en cours…</div> : recipients.length > 0 ? <div className="mt-5 overflow-x-auto rounded-xl border border-[#e5e2db]"><table className="min-w-[760px] text-left text-xs"><thead className="bg-[#f7f5ef] text-[#68766d]"><tr><th className="px-3 py-2 font-semibold">Ligne</th><th className="px-3 py-2 font-semibold">Destinataire</th><th className="px-3 py-2 font-semibold">Résultat du contrôle</th><th className="px-3 py-2 font-semibold">Décision</th><th className="px-3 py-2 font-semibold">Liste</th></tr></thead><tbody className="divide-y divide-[#eeeae3]">{recipients.map(recipient => <tr key={recipient.sourceRow} className={recipient.issues.length ? "bg-[#fff8f4]" : !recipient.includeInGeneration ? "bg-[#fffdf8]" : "bg-white"}><td className="px-3 py-2 text-[#8a7750]">{recipient.sourceRow}</td><td className="px-3 py-2 font-medium text-[#34453b]">{recipient.name || "—"}</td><td className="max-w-72 px-3 py-2 leading-5 text-[#6e7a72]">{recipient.issues.length ? recipient.issues.join(" ") : recipient.dedupeStatus === "sent_confirmed" ? <span><strong className="font-semibold text-[#966039]">Déjà envoyé.</strong> {recipient.dedupeReason} {recipient.matchedCampaignName ? `Campagne : ${recipient.matchedCampaignName}.` : ""}</span> : recipient.dedupeStatus === "review" ? <span><strong className="font-semibold text-[#9a7027]">À vérifier.</strong> {recipient.dedupeReason} {recipient.matchedCampaignName ? `Campagne : ${recipient.matchedCampaignName}.` : ""}</span> : recipient.warning || "Nouveau destinataire"}</td><td className="px-3 py-2">{recipient.issues.length ? <span className="text-[#ad634b]">À corriger</span> : <Button size="sm" variant="outline" onClick={() => toggleRecipientInclusion(recipient.sourceRow)} className={recipient.includeInGeneration ? "h-8 border-[#e2c9b7] bg-white text-[#a35b3f] hover:bg-[#fff6f1]" : "h-8 border-[#bfd7c5] bg-white text-[#347355] hover:bg-[#f2faf4]"}>{recipient.includeInGeneration ? "Exclure" : "Réintégrer"}</Button>}</td><td className="px-3 py-2"><Button size="sm" variant="ghost" onClick={() => removeRecipient(recipient.sourceRow)} className="h-8 text-[#a2503b] hover:bg-[#fff0ed] hover:text-[#903f2e]">Retirer</Button></td></tr>)}</tbody></table></div> : <p className="mt-5 rounded-xl bg-[#f5f3ee] p-4 text-sm leading-6 text-[#68736c]">Associez la colonne obligatoire puis lancez le contrôle pour afficher les destinataires et leurs décisions.</p>}
+                  {prepare.isPending ? <div className="mt-5 flex items-center gap-2 rounded-xl bg-[#edf4ef] p-4 text-sm text-[#347355]"><Loader2 className="h-4 w-4 animate-spin" /> Analyse des destinataires en cours…</div> : recipients.length > 0 ? visibleRecipients.length > 0 ? <div className="mt-5 overflow-x-auto rounded-xl border border-[#e5e2db]"><table className="min-w-[760px] text-left text-xs"><thead className="bg-[#f7f5ef] text-[#68766d]"><tr><th className="px-3 py-2 font-semibold">Ligne</th><th className="px-3 py-2 font-semibold">Destinataire</th><th className="px-3 py-2 font-semibold">Résultat du contrôle</th><th className="px-3 py-2 font-semibold">Décision</th><th className="px-3 py-2 font-semibold">Liste</th></tr></thead><tbody className="divide-y divide-[#eeeae3]">{visibleRecipients.map(recipient => <tr key={recipient.sourceRow} className={recipient.issues.length ? "bg-[#fff8f4]" : !recipient.includeInGeneration ? "bg-[#fffdf8]" : "bg-white"}><td className="px-3 py-2 text-[#8a7750]">{recipient.sourceRow}</td><td className="px-3 py-2 font-medium text-[#34453b]">{recipient.name || "—"}</td><td className="max-w-72 px-3 py-2 leading-5 text-[#6e7a72]">{recipient.issues.length ? recipient.issues.join(" ") : recipient.dedupeStatus === "sent_confirmed" ? <span><strong className="font-semibold text-[#966039]">Déjà envoyé.</strong> {recipient.dedupeReason} {recipient.matchedCampaignName ? `Campagne : ${recipient.matchedCampaignName}.` : ""}</span> : recipient.dedupeStatus === "review" ? <span><strong className="font-semibold text-[#9a7027]">À vérifier.</strong> {recipient.dedupeReason} {recipient.matchedCampaignName ? `Campagne : ${recipient.matchedCampaignName}.` : ""}</span> : recipient.warning || "Nouveau destinataire"}</td><td className="px-3 py-2">{recipient.issues.length ? <span className="text-[#ad634b]">À corriger</span> : <Button size="sm" variant="outline" onClick={() => toggleRecipientInclusion(recipient.sourceRow)} className={recipient.includeInGeneration ? "h-8 border-[#e2c9b7] bg-white text-[#a35b3f] hover:bg-[#fff6f1]" : "h-8 border-[#bfd7c5] bg-white text-[#347355] hover:bg-[#f2faf4]"}>{recipient.includeInGeneration ? "Exclure" : "Réintégrer"}</Button>}</td><td className="px-3 py-2"><Button size="sm" variant="ghost" onClick={() => removeRecipient(recipient.sourceRow)} className="h-8 text-[#a2503b] hover:bg-[#fff0ed] hover:text-[#903f2e]">Retirer</Button></td></tr>)}</tbody></table></div> : <p className="mt-5 rounded-xl bg-[#f5f3ee] p-4 text-sm leading-6 text-[#68736c]">Aucun destinataire ne correspond à ce filtre. Changez de vue ou réintégrez un destinataire.</p> : <p className="mt-5 rounded-xl bg-[#f5f3ee] p-4 text-sm leading-6 text-[#68736c]">Associez la colonne obligatoire puis lancez le contrôle pour afficher les destinataires et leurs décisions.</p>}
                 </section>
               </>}
               <DialogFooter className="mt-6 border-t border-[#e7e2d9] pt-4"><Button onClick={() => setReviewModalOpen(false)} className="h-10 rounded-xl bg-[#123d35] hover:bg-[#0b2d27]">Continuer avec {includedRecipients.length} destinataire{includedRecipients.length > 1 ? "s" : ""}</Button></DialogFooter>

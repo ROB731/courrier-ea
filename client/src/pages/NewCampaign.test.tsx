@@ -40,10 +40,13 @@ vi.mock("@/lib/trpc", () => ({
           mutate: vi.fn((input: unknown) => {
             testState.prepareCalls.push(input);
             options.onSuccess?.({
-              recipients: [{ sourceRow: 2, name: "Entreprise test", values: { DESTINATAIRE: "Entreprise test", TELEPHONE: "+22501020304" }, warning: null, issues: [], includeInGeneration: true, dedupeStatus: "new", dedupeReason: null, matchedCampaignName: null }],
-              validCount: 1,
+              recipients: [
+                { sourceRow: 2, name: "Entreprise test", values: { DESTINATAIRE: "Entreprise test", TELEPHONE: "+22501020304" }, warning: null, issues: [], includeInGeneration: true, dedupeStatus: "new", dedupeReason: null, matchedCampaignName: null },
+                { sourceRow: 3, name: "Entreprise déjà envoyée", values: { DESTINATAIRE: "Entreprise déjà envoyée", TELEPHONE: "+22506070809" }, warning: null, issues: [], includeInGeneration: false, dedupeStatus: "sent_confirmed", dedupeReason: "Téléphone déjà utilisé", matchedCampaignName: "Ancienne campagne" },
+              ],
+              validCount: 2,
               invalidCount: 0,
-              sentConfirmedCount: 0,
+              sentConfirmedCount: 1,
               reviewCount: 0,
               directory: { created: 0, updated: 0 },
             });
@@ -82,7 +85,19 @@ describe("NewCampaign — contrôle automatique après import Excel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Tout retirer" }));
     expect(screen.getByRole("button", { name: "Continuer avec 0 destinataire" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Tout inclure" }));
-    expect(screen.getByRole("button", { name: "Continuer avec 1 destinataire" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Continuer avec 2 destinataires" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Doublons (1)" }));
+    expect(screen.getByText("Entreprise déjà envoyée")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Nouveaux (1)" }));
+    expect(screen.getByText("Entreprise test")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Exclure" }));
+    expect(screen.getByText("Entreprise test a été retiré de la génération.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Retirés (1)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Réintégrer" }));
+    expect(screen.getByText("Entreprise test a été réintégré à la génération.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Tous (2)" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Retirer" })[0]);
+    expect(screen.getByText(/a été supprimé de la liste/)).toBeTruthy();
   });
 
   it("n’exécute pas le contrôle avant une correspondance obligatoire valide et conserve le recontrôle manuel", async () => {

@@ -88,3 +88,11 @@
 - [x] Mettre dans le modal les actions d’inclusion, d’exclusion, de réintégration, de retrait et d’ajout manuel.
 - [x] Garantir que les boutons du modal modifient immédiatement la liste finale de génération.
 - [x] Ajouter des tests d’interaction du modal et vérifier le nouveau parcours en navigateur.
+- [x] Ajouter des filtres dédiés pour les nouveaux, les doublons déjà envoyés et les cas à vérifier dans le modal.
+- [x] Corriger les actions de conservation, exclusion, réintégration et retrait afin que chaque clic mette la liste à jour visiblement.
+- [x] Ajouter des retours de confirmation et une couverture de test pour les filtres et les actions par ligne.
+- [x] Exporter la liste actuellement filtrée au format Excel avec les champs de destinataire.
+- [x] Imprimer la liste filtrée dans une mise en page lisible.
+- [x] Exclure par défaut les destinataires déjà envoyés de l’export et de l’impression, sauf réintégration explicite.
+- [x] Tester les actions par ligne Retirer et Réintégrer avec une mise à jour visible de la liste.
+- [x] Produire un vrai fichier Excel .xlsx pour la liste filtrée.
