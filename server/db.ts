@@ -86,10 +86,10 @@ export async function getCampaignForUser(campaignId: string, userId: number) {
   return rows[0];
 }
 
-export async function createRecipients(campaignId: string, recipients: Array<{ name: string; values: Record<string, string>; warning: string | null; position: number }>): Promise<void> {
+export async function createRecipients(campaignId: string, recipients: Array<{ name: string; values: Record<string, string>; warning: string | null; position: number; dedupeStatus: "new" | "sent_confirmed" | "review"; dedupeReason: string | null; matchedRecipientId: number | null; matchedCampaignId: string | null; includeInGeneration: boolean }>): Promise<void> {
   if (!recipients.length) return;
   const db = await requireDb();
-  await db.insert(campaignRecipients).values(recipients.map(recipient => ({ campaignId, name: recipient.name, valuesJson: JSON.stringify(recipient.values), warning: recipient.warning, position: recipient.position, status: "to_send" as const })));
+  await db.insert(campaignRecipients).values(recipients.map(recipient => ({ campaignId, name: recipient.name, valuesJson: JSON.stringify(recipient.values), warning: recipient.warning, position: recipient.position, status: "to_send" as const, dedupeStatus: recipient.dedupeStatus, dedupeReason: recipient.dedupeReason, matchedRecipientId: recipient.matchedRecipientId, matchedCampaignId: recipient.matchedCampaignId, includeInGeneration: recipient.includeInGeneration })));
 }
 
 export async function listCampaignRecipients(campaignId: string) {
@@ -100,6 +100,21 @@ export async function listCampaignRecipients(campaignId: string) {
 export async function updateRecipientStatus(recipientId: number, campaignId: string, status: "to_send" | "sent"): Promise<void> {
   const db = await requireDb();
   await db.update(campaignRecipients).set({ status }).where(and(eq(campaignRecipients.id, recipientId), eq(campaignRecipients.campaignId, campaignId)));
+}
+
+export async function listSentRecipientsForUser(userId: number) {
+  const db = await requireDb();
+  return db.select({
+    id: campaignRecipients.id,
+    campaignId: campaignRecipients.campaignId,
+    campaignName: campaigns.name,
+    sentAt: campaignRecipients.updatedAt,
+    name: campaignRecipients.name,
+    valuesJson: campaignRecipients.valuesJson,
+  }).from(campaignRecipients)
+    .innerJoin(campaigns, eq(campaignRecipients.campaignId, campaigns.id))
+    .where(and(eq(campaigns.userId, userId), eq(campaignRecipients.status, "sent")))
+    .orderBy(desc(campaignRecipients.updatedAt));
 }
 
 export type DirectoryValues = Record<string, string>;

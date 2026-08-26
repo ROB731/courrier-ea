@@ -26,7 +26,8 @@ import { useLocation } from "wouter";
 
 type SourceRow = { rowNumber: number; values: Record<string, string>; name: string; issues: string[] };
 type SourceData = { fileKey: string; fileUrl: string; sourceType: "excel" | "paste" | "directory"; columnName: string; headers: string[]; rows: SourceRow[] };
-type PreparedRecipient = { sourceRow: number; name: string; values: Record<string, string>; warning: string | null; issues: string[] };
+type DedupeStatus = "new" | "sent_confirmed" | "review";
+type PreparedRecipient = { sourceRow: number; name: string; values: Record<string, string>; warning: string | null; issues: string[]; includeInGeneration: boolean; dedupeStatus: DedupeStatus; dedupeReason: string | null; matchedCampaignName: string | null };
 
 const REQUIRED_FIELD = "DESTINATAIRE";
 const fieldLabels: Record<string, string> = {
@@ -83,8 +84,12 @@ export default function NewCampaign() {
   const fields = selectedTemplate?.fields ?? uploadedFields;
   const validRecipients = useMemo(() => recipients.filter(recipient => recipient.issues.length === 0), [recipients]);
   const invalidRecipients = useMemo(() => recipients.filter(recipient => recipient.issues.length > 0), [recipients]);
+  const includedRecipients = useMemo(() => validRecipients.filter(recipient => recipient.includeInGeneration), [validRecipients]);
+  const excludedRecipients = useMemo(() => validRecipients.filter(recipient => !recipient.includeInGeneration), [validRecipients]);
+  const confirmedSentRecipients = useMemo(() => validRecipients.filter(recipient => recipient.dedupeStatus === "sent_confirmed"), [validRecipients]);
+  const reviewRecipients = useMemo(() => validRecipients.filter(recipient => recipient.dedupeStatus === "review"), [validRecipients]);
   const mappedRequired = Boolean(mappings[REQUIRED_FIELD]);
-  const canGenerate = Boolean(campaignName.trim() && templateId && source && validRecipients.length && mappedRequired);
+  const canGenerate = Boolean(campaignName.trim() && templateId && source && includedRecipients.length && mappedRequired);
 
   const uploadTemplate = trpc.courrier.uploadTemplate.useMutation({
     onSuccess: async result => {
@@ -104,7 +109,9 @@ export default function NewCampaign() {
       setPreviewUrl("");
       setPreviewWarnings([]);
       const directoryNote = result.directory.created || result.directory.updated ? ` · ${result.directory.created} ajouté${result.directory.created > 1 ? "s" : ""} et ${result.directory.updated} mis à jour dans le répertoire` : "";
-      setNotice(`${result.validCount} courrier${result.validCount > 1 ? "s" : ""} prêt${result.validCount > 1 ? "s" : ""}${result.invalidCount ? ` · ${result.invalidCount} ligne${result.invalidCount > 1 ? "s" : ""} à corriger` : ""}${directoryNote}.`);
+      const duplicateNote = result.sentConfirmedCount ? ` · ${result.sentConfirmedCount} déjà envoyé${result.sentConfirmedCount > 1 ? "s" : ""} exclu${result.sentConfirmedCount > 1 ? "s" : ""} par défaut` : "";
+      const reviewNote = result.reviewCount ? ` · ${result.reviewCount} rapprochement${result.reviewCount > 1 ? "s" : ""} à vérifier` : "";
+      setNotice(`${result.validCount} ligne${result.validCount > 1 ? "s" : ""} valide${result.validCount > 1 ? "s" : ""}${duplicateNote}${reviewNote}${result.invalidCount ? ` · ${result.invalidCount} ligne${result.invalidCount > 1 ? "s" : ""} à corriger` : ""}${directoryNote}.`);
     },
   });
   const preview = trpc.courrier.preview.useMutation({ onSuccess: result => { setPreviewUrl(result.pdfUrl); setPreviewWarnings(result.warnings); } });
@@ -173,7 +180,7 @@ export default function NewCampaign() {
   }
 
   function requestPreview() {
-    const selected = validRecipients[Number(previewIndex)] ?? validRecipients[0];
+    const selected = includedRecipients[Number(previewIndex)] ?? includedRecipients[0];
     if (!templateId || !selected) return;
     preview.mutate({ templateId, values: selected.values });
   }
@@ -187,8 +194,15 @@ export default function NewCampaign() {
       sourceFileUrl: source.fileUrl,
       sourceType: source.sourceType,
       mappings,
-      recipients: validRecipients.map(recipient => ({ sourceRow: recipient.sourceRow, values: recipient.values })),
+      recipients: validRecipients.map(recipient => ({ sourceRow: recipient.sourceRow, values: recipient.values, includeInGeneration: recipient.includeInGeneration })),
     });
+  }
+
+  function toggleRecipientInclusion(sourceRow: number) {
+    setRecipients(current => current.map(recipient => recipient.sourceRow === sourceRow && recipient.issues.length === 0 ? { ...recipient, includeInGeneration: !recipient.includeInGeneration } : recipient));
+    setPreviewUrl("");
+    setPreviewWarnings([]);
+    setPreviewIndex("0");
   }
 
   const requirements = [
@@ -196,6 +210,7 @@ export default function NewCampaign() {
     { label: "Modèle Word multi-champs", ready: Boolean(templateId && fields.length) },
     { label: "Source de données", ready: Boolean(source) },
     { label: "Correspondance validée", ready: Boolean(validRecipients.length) },
+    { label: "Liste à générer", ready: Boolean(includedRecipients.length) },
   ];
 
   return (
@@ -231,20 +246,21 @@ export default function NewCampaign() {
               {prepare.error && <ErrorMessage text={prepare.error.message} />}
             </StepCard>}
 
-            {recipients.length > 0 && <StepCard number="5" title="Contrôler les destinataires" description="Les lignes sans destinataire ne seront pas générées. Les alertes n’empêchent pas la génération, mais méritent une vérification visuelle.">
-              <div className="flex flex-wrap items-center gap-2"><Badge className="border-0 bg-[#e3f0e8] text-[#2c7250]">{validRecipients.length} prêt{validRecipients.length > 1 ? "s" : ""}</Badge>{invalidRecipients.length > 0 && <Badge className="border-0 bg-[#fff0ed] text-[#a24e38]">{invalidRecipients.length} à corriger</Badge>}<button type="button" onClick={() => setShowRecipients(value => !value)} className="ml-auto inline-flex items-center gap-2 text-xs font-semibold text-[#315e51] hover:text-[#123d35]"><ListChecks className="h-4 w-4" />{showRecipients ? "Masquer la liste" : "Voir les lignes"}</button></div>
-              {showRecipients && <div className="mt-4 overflow-x-auto rounded-xl border border-[#e5e2db]"><table className="min-w-full text-left text-xs"><thead className="bg-[#f7f5ef] text-[#68766d]"><tr><th className="px-3 py-2 font-semibold">Ligne</th><th className="px-3 py-2 font-semibold">Destinataire</th><th className="px-3 py-2 font-semibold">Contrôle</th></tr></thead><tbody className="divide-y divide-[#eeeae3]">{recipients.map(recipient => <tr key={recipient.sourceRow} className={recipient.issues.length ? "bg-[#fff8f4]" : "bg-white"}><td className="px-3 py-2 text-[#8a7750]">{recipient.sourceRow}</td><td className="px-3 py-2 font-medium text-[#34453b]">{recipient.name || "—"}</td><td className="px-3 py-2 text-[#6e7a72]">{recipient.issues.length ? recipient.issues.join(" ") : recipient.warning || "Prêt"}</td></tr>)}</tbody></table></div>}
+            {recipients.length > 0 && <StepCard number="5" title="Vérifier les envois précédents" description="Les destinataires marqués « Envoyé » dans vos campagnes précédentes sont exclus par défaut. Vous pouvez les réintégrer si vous souhaitez tout de même leur envoyer ce courrier.">
+              <div className="flex flex-wrap items-center gap-2"><Badge className="border-0 bg-[#e3f0e8] text-[#2c7250]">{includedRecipients.length} à générer</Badge>{confirmedSentRecipients.length > 0 && <Badge className="border-0 bg-[#f7eadf] text-[#99633a]">{confirmedSentRecipients.length} déjà envoyé{confirmedSentRecipients.length > 1 ? "s" : ""}</Badge>}{reviewRecipients.length > 0 && <Badge className="border-0 bg-[#fff3df] text-[#9b6d23]">{reviewRecipients.length} à vérifier</Badge>}{invalidRecipients.length > 0 && <Badge className="border-0 bg-[#fff0ed] text-[#a24e38]">{invalidRecipients.length} à corriger</Badge>}<button type="button" onClick={() => setShowRecipients(value => !value)} className="ml-auto inline-flex items-center gap-2 text-xs font-semibold text-[#315e51] hover:text-[#123d35]"><ListChecks className="h-4 w-4" />{showRecipients ? "Masquer la revue" : "Voir la revue"}</button></div>
+              {excludedRecipients.length > 0 && <p className="mt-3 rounded-lg bg-[#fff9f0] px-3 py-2 text-xs leading-5 text-[#8c6334]">{excludedRecipients.length} destinataire{excludedRecipients.length > 1 ? "s" : ""} sera/seront conservé{excludedRecipients.length > 1 ? "s" : ""} dans la trace de campagne, mais ne figurera/figureront pas dans le PDF ni dans le ZIP.</p>}
+              {showRecipients && <div className="mt-4 overflow-x-auto rounded-xl border border-[#e5e2db]"><table className="min-w-[680px] text-left text-xs"><thead className="bg-[#f7f5ef] text-[#68766d]"><tr><th className="px-3 py-2 font-semibold">Ligne</th><th className="px-3 py-2 font-semibold">Destinataire</th><th className="px-3 py-2 font-semibold">Résultat du contrôle</th><th className="px-3 py-2 font-semibold">Décision</th></tr></thead><tbody className="divide-y divide-[#eeeae3]">{recipients.map(recipient => <tr key={recipient.sourceRow} className={recipient.issues.length ? "bg-[#fff8f4]" : !recipient.includeInGeneration ? "bg-[#fffdf8]" : "bg-white"}><td className="px-3 py-2 text-[#8a7750]">{recipient.sourceRow}</td><td className="px-3 py-2 font-medium text-[#34453b]">{recipient.name || "—"}</td><td className="max-w-72 px-3 py-2 leading-5 text-[#6e7a72]">{recipient.issues.length ? recipient.issues.join(" ") : recipient.dedupeStatus === "sent_confirmed" ? <span><strong className="font-semibold text-[#966039]">Déjà envoyé.</strong> {recipient.dedupeReason} {recipient.matchedCampaignName ? `Campagne : ${recipient.matchedCampaignName}.` : ""}</span> : recipient.dedupeStatus === "review" ? <span><strong className="font-semibold text-[#9a7027]">À vérifier.</strong> {recipient.dedupeReason} {recipient.matchedCampaignName ? `Campagne : ${recipient.matchedCampaignName}.` : ""}</span> : recipient.warning || "Nouveau destinataire"}</td><td className="px-3 py-2">{recipient.issues.length ? <span className="text-[#ad634b]">À corriger</span> : <Button size="sm" variant="outline" onClick={() => toggleRecipientInclusion(recipient.sourceRow)} className={recipient.includeInGeneration ? "h-8 border-[#e2c9b7] bg-white text-[#a35b3f] hover:bg-[#fff6f1]" : "h-8 border-[#bfd7c5] bg-white text-[#347355] hover:bg-[#f2faf4]"}>{recipient.includeInGeneration ? "Exclure" : "Réintégrer"}</Button>}</td></tr>)}</tbody></table></div>}
             </StepCard>}
           </div>
 
           <aside className="self-start rounded-[1.6rem] border border-[#e3ded3] bg-white p-6 shadow-[0_14px_34px_rgba(36,44,38,0.05)] xl:sticky xl:top-8">
             <p className="text-[11px] font-semibold uppercase tracking-[0.17em] text-[#9a7a40]">Contrôle avant génération</p><h2 className="mt-2 font-serif text-2xl text-[#1d3028]">Prévisualisez une lettre</h2><p className="mt-2 text-sm leading-6 text-[#778079]">L’aperçu injecte toutes les valeurs de la ligne choisie, avec le même moteur sécurisé que la campagne.</p>
-            <select value={previewIndex} onChange={event => setPreviewIndex(event.target.value)} disabled={!validRecipients.length} className="mt-5 h-11 w-full rounded-xl border border-[#ddd9d0] bg-[#fcfbf8] px-3 text-sm text-[#44564b]"><option value="0">{validRecipients[0] ? `Ligne ${validRecipients[0].sourceRow} — ${validRecipients[0].name}` : "Aucun courrier prêt"}</option>{validRecipients.slice(1).map((recipient, index) => <option key={recipient.sourceRow} value={String(index + 1)}>Ligne {recipient.sourceRow} — {recipient.name}</option>)}</select>
-            <Button variant="outline" onClick={requestPreview} disabled={!templateId || !validRecipients.length || preview.isPending} className="mt-3 h-10 w-full rounded-xl border-[#cfdbd3] text-[#315e51] hover:bg-[#edf2ee]">{preview.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Eye className="mr-2 h-4 w-4" />}Générer l’aperçu</Button>
+            <select value={previewIndex} onChange={event => setPreviewIndex(event.target.value)} disabled={!includedRecipients.length} className="mt-5 h-11 w-full rounded-xl border border-[#ddd9d0] bg-[#fcfbf8] px-3 text-sm text-[#44564b]"><option value="0">{includedRecipients[0] ? `Ligne ${includedRecipients[0].sourceRow} — ${includedRecipients[0].name}` : "Aucun courrier à générer"}</option>{includedRecipients.slice(1).map((recipient, index) => <option key={recipient.sourceRow} value={String(index + 1)}>Ligne {recipient.sourceRow} — {recipient.name}</option>)}</select>
+            <Button variant="outline" onClick={requestPreview} disabled={!templateId || !includedRecipients.length || preview.isPending} className="mt-3 h-10 w-full rounded-xl border-[#cfdbd3] text-[#315e51] hover:bg-[#edf2ee]">{preview.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Eye className="mr-2 h-4 w-4" />}Générer l’aperçu</Button>
             {preview.error && <ErrorMessage text={preview.error.message} />}
             {previewUrl && <div className="mt-4 rounded-xl border border-[#dce6df] bg-[#f5faf6] p-4"><div className="flex gap-3"><Check className="mt-0.5 h-4 w-4 shrink-0 text-[#317257]" /><div><p className="text-sm font-medium text-[#2f6c50]">Aperçu disponible</p><p className="mt-1 text-xs leading-5 text-[#618072]">Ouvrez le PDF pour contrôler la fidélité de toutes les variables.</p></div></div>{previewWarnings.map(warning => <p key={warning} className="mt-3 rounded-lg bg-[#fff3e8] px-3 py-2 text-xs leading-5 text-[#9a572f]"><AlertTriangle className="mr-1 inline h-3.5 w-3.5" />{warning}</p>)}<a href={previewUrl} target="_blank" rel="noreferrer" className="mt-3 flex items-center justify-center gap-1 text-sm font-medium text-[#315e51] hover:text-[#123d35]">Ouvrir le PDF <ChevronRight className="h-4 w-4" /></a></div>}
             {notice && <p className="mt-4 rounded-xl bg-[#edf4ef] px-3 py-2.5 text-xs leading-5 text-[#3f725b]">{notice}</p>}
-            <div className="mt-7 border-t border-[#eeeae3] pt-6"><div className="rounded-xl bg-[#f6f4ef] p-3"><p className="text-xs font-semibold uppercase tracking-[0.13em] text-[#8d7544]">Prêt à générer ?</p><div className="mt-2 space-y-1.5">{requirements.map(requirement => <div key={requirement.label} className={`flex items-center gap-2 text-xs ${requirement.ready ? "text-[#347355]" : "text-[#8a918c]"}`}>{requirement.ready ? <CircleCheck className="h-3.5 w-3.5" /> : <span className="h-3.5 w-3.5 rounded-full border border-[#b8b9b2]" />}{requirement.label} {requirement.ready ? "prêt" : "à compléter"}</div>)}</div></div><Button onClick={generateCampaign} disabled={!canGenerate || createCampaign.isPending} className="mt-4 h-11 w-full rounded-xl bg-[#123d35] font-semibold hover:bg-[#0b2d27]">{createCampaign.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Génération en cours…</> : <>Générer puis télécharger la campagne <ChevronRight className="ml-2 h-4 w-4" /></>}</Button>{!canGenerate && <p className="mt-3 text-center text-[11px] leading-5 text-[#8d928c]">Importez les données, associez {"{{DESTINATAIRE}}"} et validez au moins une ligne avant de générer.</p>}{invalidRecipients.length > 0 && <p className="mt-2 text-center text-[11px] leading-5 text-[#a15e40]">{invalidRecipients.length} ligne{invalidRecipients.length > 1 ? "s" : ""} incomplète{invalidRecipients.length > 1 ? "s" : ""} sera/seront exclue{invalidRecipients.length > 1 ? "s" : ""}.</p>}{createCampaign.error && <ErrorMessage text={createCampaign.error.message} />}</div>
+            <div className="mt-7 border-t border-[#eeeae3] pt-6"><div className="rounded-xl bg-[#f6f4ef] p-3"><p className="text-xs font-semibold uppercase tracking-[0.13em] text-[#8d7544]">Prêt à générer ?</p><div className="mt-2 space-y-1.5">{requirements.map(requirement => <div key={requirement.label} className={`flex items-center gap-2 text-xs ${requirement.ready ? "text-[#347355]" : "text-[#8a918c]"}`}>{requirement.ready ? <CircleCheck className="h-3.5 w-3.5" /> : <span className="h-3.5 w-3.5 rounded-full border border-[#b8b9b2]" />}{requirement.label} {requirement.ready ? "prêt" : "à compléter"}</div>)}</div></div><Button onClick={generateCampaign} disabled={!canGenerate || createCampaign.isPending} className="mt-4 h-11 w-full rounded-xl bg-[#123d35] font-semibold hover:bg-[#0b2d27]">{createCampaign.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Génération en cours…</> : <>Générer {includedRecipients.length} courrier{includedRecipients.length > 1 ? "s" : ""} <ChevronRight className="ml-2 h-4 w-4" /></>}</Button>{!canGenerate && <p className="mt-3 text-center text-[11px] leading-5 text-[#8d928c]">Importez les données, associez {"{{DESTINATAIRE}}"} et conservez au moins une ligne dans la liste à générer.</p>}{excludedRecipients.length > 0 && <p className="mt-2 text-center text-[11px] leading-5 text-[#8c6334]">{excludedRecipients.length} destinataire{excludedRecipients.length > 1 ? "s" : ""} ne sera/seront pas généré{excludedRecipients.length > 1 ? "s" : ""}.</p>}{invalidRecipients.length > 0 && <p className="mt-2 text-center text-[11px] leading-5 text-[#a15e40]">{invalidRecipients.length} ligne{invalidRecipients.length > 1 ? "s" : ""} incomplète{invalidRecipients.length > 1 ? "s" : ""} sera/seront exclue{invalidRecipients.length > 1 ? "s" : ""}.</p>}{createCampaign.error && <ErrorMessage text={createCampaign.error.message} />}</div>
           </aside>
         </div>
       </div>

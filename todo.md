@@ -44,3 +44,11 @@
 - [x] Vérifier l’accès GitHub et identifier ou créer le dépôt COURRIER EA.
 - [x] Exporter la version validée de COURRIER EA vers GitHub.
 - [x] Confirmer que le dépôt distant contient la version exportée.
+- [x] Définir les règles de détection des destinataires déjà contactés.
+- [x] Concevoir la revue des doublons et des correspondances incertaines avant génération.
+- [x] Ajouter un filtre permettant de ne générer que les courriers réellement nouveaux.
+- [x] Comparer les nouvelles listes avec les destinataires historiques au statut « Envoyé ».
+- [x] Classer les résultats en nouveaux, déjà envoyés confirmés et correspondances à vérifier.
+- [x] Permettre d’inclure manuellement un destinataire déjà envoyé avant la génération.
+- [x] Conserver la décision d’exclusion ou de réintégration dans la campagne.
+- [x] Tester les règles anti-doublon et la génération filtrée.

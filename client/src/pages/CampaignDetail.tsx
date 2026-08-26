@@ -36,7 +36,9 @@ export default function CampaignDetail({ id }: { id: string }) {
   }
 
   const { campaign, recipients } = data;
-  const sentCount = recipients.filter(recipient => recipient.status === "sent").length;
+  const generatedRecipients = recipients.filter(recipient => recipient.includeInGeneration);
+  const excludedRecipients = recipients.filter(recipient => !recipient.includeInGeneration);
+  const sentCount = generatedRecipients.filter(recipient => recipient.status === "sent").length;
   const isReady = campaign.status === "ready";
 
   function printCampaign() {
@@ -65,7 +67,7 @@ export default function CampaignDetail({ id }: { id: string }) {
 
         {campaign.status === "error" && <div className="mt-7 rounded-xl border border-[#eed9d1] bg-[#fff6f3] p-4 text-sm leading-6 text-[#95533f]"><TriangleAlert className="mr-2 inline h-4 w-4" />{campaign.errorMessage || "La génération a rencontré une erreur."}</div>}
 
-        <section className="mt-8 grid gap-4 sm:grid-cols-3"><Summary label="Destinataires" value={recipients.length} icon={Send} /><Summary label="Envoyés" value={sentCount} icon={Check} /><Summary label="À envoyer" value={recipients.length - sentCount} icon={Download} /></section>
+        <section className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Summary label="À générer" value={generatedRecipients.length} icon={Send} /><Summary label="Envoyés" value={sentCount} icon={Check} /><Summary label="À envoyer" value={generatedRecipients.length - sentCount} icon={Download} /><Summary label="Exclus" value={excludedRecipients.length} icon={TriangleAlert} /></section>
 
         <section className="mt-8 overflow-hidden rounded-[1.5rem] border border-[#e5e2db] bg-white shadow-[0_12px_32px_rgba(36,44,38,0.04)]">
           <div className="flex flex-col justify-between gap-2 border-b border-[#eeeae3] px-5 py-5 sm:flex-row sm:items-center sm:px-7"><div><p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#9a7a40]">Suivi d’envoi</p><h2 className="mt-1 font-serif text-2xl text-[#24372d]">Destinataires de la campagne</h2></div><p className="text-xs text-[#7f8981]">Modifiez les statuts au fur et à mesure des envois.</p></div>
@@ -75,16 +77,20 @@ export default function CampaignDetail({ id }: { id: string }) {
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium text-[#2c3e34]">{recipient.position}. {recipient.name}</p>
                   {Object.entries(recipient.values).filter(([field, value]) => field !== "DESTINATAIRE" && value).slice(0, 3).length > 0 && <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[#728077]">{Object.entries(recipient.values).filter(([field, value]) => field !== "DESTINATAIRE" && value).slice(0, 3).map(([field, value]) => <span key={field}>{field.replaceAll("_", " ").toLowerCase()} : {value}</span>)}</div>}
+                  {recipient.dedupeReason && <p className={`mt-1 text-xs leading-5 ${recipient.includeInGeneration ? "text-[#9a7027]" : "text-[#966039]"}`}><TriangleAlert className="mr-1 inline h-3 w-3" />{recipient.dedupeReason}</p>}
                   {recipient.warning && <p className="mt-1 text-xs leading-5 text-[#aa623b]"><TriangleAlert className="mr-1 inline h-3 w-3" />{recipient.warning}</p>}
                 </div>
-                <button
+                {!recipient.includeInGeneration ? <span className="inline-flex w-fit items-center gap-2 rounded-lg bg-[#f7eadf] px-3 py-2 text-xs font-semibold text-[#966039]"><TriangleAlert className="h-3.5 w-3.5" />Exclu — déjà envoyé</span> : <button
                   onClick={() => updateStatus.mutate({ campaignId: campaign.id, recipientId: recipient.id, status: recipient.status === "sent" ? "to_send" : "sent" })}
                   disabled={updateStatus.isPending}
-                  className={`inline-flex w-fit items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition ${recipient.status === "sent" ? "bg-[#e4f1e8] text-[#2f7150] hover:bg-[#d6ebde]" : "bg-[#f5f3ee] text-[#68726b] hover:bg-[#ece9e1]"}`}
+                  className={[
+                    "inline-flex w-fit items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition",
+                    recipient.status === "sent" ? "bg-[#e4f1e8] text-[#2f7150] hover:bg-[#d6ebde]" : "bg-[#f5f3ee] text-[#68726b] hover:bg-[#ece9e1]",
+                  ].join(" ")}
                 >
                   {recipient.status === "sent" ? <Check className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />}
                   {recipient.status === "sent" ? "Envoyé" : "À envoyer"}
-                </button>
+                </button>}
               </div>
             ))}
           </div>

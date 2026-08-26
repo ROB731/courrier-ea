@@ -14,6 +14,7 @@ import {
   listCampaignRecipients,
   listCampaignsForUser,
   listLetterTemplatesForUser,
+  listSentRecipientsForUser,
   saveImportedDirectoryRecipients,
   updateCampaign,
   updateRecipientStatus,
@@ -30,6 +31,7 @@ import {
   isDocxFile,
   isXlsxFile,
 } from "../courrierUtils";
+import { classifyRecipientsAgainstSentHistory, type DedupeStatus } from "../deduplication";
 import { storageGetSignedUrl, storagePut } from "../storage";
 import { protectedProcedure, router } from "../_core/trpc";
 
@@ -44,6 +46,7 @@ const sourceRowSchema = z.object({ rowNumber: z.number().int().positive(), value
 const preparedRecipientSchema = z.object({
   sourceRow: z.number().int().positive(),
   values: valuesSchema,
+  includeInGeneration: z.boolean().optional(),
 });
 
 type EngineResult = Record<string, unknown>;
@@ -69,6 +72,11 @@ function parseStoredValues(value: string | null): MergeValues {
     // Les données de l’historique restent lisibles avec leur nom principal.
   }
   return {};
+}
+
+async function getSentHistory(userId: number) {
+  const rows = await listSentRecipientsForUser(userId);
+  return rows.map(row => ({ id: row.id, campaignId: row.campaignId, campaignName: row.campaignName, sentAt: row.sentAt, name: row.name, values: parseStoredValues(row.valuesJson) }));
 }
 
 async function makeWorkingDirectory(): Promise<string> {
@@ -212,8 +220,11 @@ export const courrierRouter = router({
     validateMappings(fields, input.mappings, input.headers);
     const recipients = prepareRecipients(fields, input.rows, input.mappings);
     const validRecipients = recipients.filter(recipient => recipient.issues.length === 0);
+    const comparedRecipients = classifyRecipientsAgainstSentHistory(recipients, await getSentHistory(ctx.user.id));
     const directory = await saveImportedDirectoryRecipients(ctx.user.id, validRecipients.map(recipient => ({ name: recipient.name, values: recipient.values })));
-    return { fields, recipients, validCount: validRecipients.length, invalidCount: recipients.filter(recipient => recipient.issues.length > 0).length, directory };
+    const sentConfirmedCount = comparedRecipients.filter(recipient => recipient.dedupeStatus === "sent_confirmed").length;
+    const reviewCount = comparedRecipients.filter(recipient => recipient.dedupeStatus === "review").length;
+    return { fields, recipients: comparedRecipients.map(recipient => ({ ...recipient, includeInGeneration: recipient.issues.length === 0 && recipient.dedupeStatus !== "sent_confirmed" })), validCount: validRecipients.length, invalidCount: recipients.filter(recipient => recipient.issues.length > 0).length, sentConfirmedCount, reviewCount, directory };
   }),
 
   preview: protectedProcedure.input(z.object({ templateId: z.string().min(8), values: valuesSchema })).mutation(async ({ ctx, input }) => {
@@ -257,11 +268,14 @@ export const courrierRouter = router({
     const recipients = input.recipients.map(recipient => {
       const values = validateRecipientValues(fields, recipient.values);
       const warnings = warningsForValues(values);
-      return { sourceRow: recipient.sourceRow, name: values[REQUIRED_FIELD], values, warning: warnings.length ? warnings.join(" ") : null };
+      return { sourceRow: recipient.sourceRow, name: values[REQUIRED_FIELD], values, warning: warnings.length ? warnings.join(" ") : null, requestedInclusion: recipient.includeInGeneration };
     });
+    const classifiedRecipients = classifyRecipientsAgainstSentHistory(recipients, await getSentHistory(ctx.user.id)).map(recipient => ({ ...recipient, includeInGeneration: recipient.requestedInclusion === undefined ? recipient.dedupeStatus !== "sent_confirmed" : recipient.requestedInclusion }));
+    const includedRecipients = classifiedRecipients.filter(recipient => recipient.includeInGeneration);
+    if (!includedRecipients.length) throw new TRPCError({ code: "BAD_REQUEST", message: "Tous les destinataires sont déjà envoyés ou exclus. Réintégrez au moins un destinataire pour générer la campagne." });
     const campaignId = nanoid();
-    await createCampaign({ id: campaignId, userId: ctx.user.id, templateId: template.id, name: input.name, excelFileKey: input.sourceFileKey, excelFileUrl: input.sourceFileUrl, dataSourceType: input.sourceType, mappingsJson: JSON.stringify(input.mappings), recipientCount: recipients.length, status: "generating" });
-    await createRecipients(campaignId, recipients.map((recipient, index) => ({ ...recipient, position: index + 1 })));
+    await createCampaign({ id: campaignId, userId: ctx.user.id, templateId: template.id, name: input.name, excelFileKey: input.sourceFileKey, excelFileUrl: input.sourceFileUrl, dataSourceType: input.sourceType, mappingsJson: JSON.stringify(input.mappings), recipientCount: includedRecipients.length, status: "generating" });
+    await createRecipients(campaignId, classifiedRecipients.map((recipient, index) => ({ ...recipient, dedupeStatus: recipient.dedupeStatus as DedupeStatus, dedupeReason: recipient.dedupeReason, matchedRecipientId: recipient.matchedRecipientId, matchedCampaignId: recipient.matchedCampaignId, position: index + 1 })));
     const workDir = await makeWorkingDirectory();
     try {
       const modelPath = path.join(workDir, "modele.docx");
@@ -270,7 +284,7 @@ export const courrierRouter = router({
       const zipPath = path.join(workDir, "courriers.zip");
       const pdfPath = path.join(workDir, "courriers.pdf");
       await downloadStorageFile(template.fileKey, modelPath);
-      await fs.writeFile(recipientsPath, JSON.stringify(recipients), "utf-8");
+      await fs.writeFile(recipientsPath, JSON.stringify(includedRecipients), "utf-8");
       const generation = await runEngine("generate", ["--template", modelPath, "--recipients-json", recipientsPath, "--output-dir", outputDir, "--zip-output", zipPath, "--pdf-output", pdfPath]);
       const [zip, pdf] = await Promise.all([fs.readFile(zipPath), fs.readFile(pdfPath)]);
       const dateSegment = new Date().toISOString().slice(0, 10);

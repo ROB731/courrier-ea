@@ -1,4 +1,4 @@
-import { index, int, mysqlEnum, mysqlTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
+import { boolean, index, int, mysqlEnum, mysqlTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
@@ -50,6 +50,7 @@ export const campaigns = mysqlTable("campaigns", {
 }, table => [index("campaigns_user_created_idx").on(table.userId, table.createdAt)]);
 
 export const recipientStatus = ["to_send", "sent"] as const;
+export const recipientDedupeStatus = ["new", "sent_confirmed", "review"] as const;
 
 export const campaignRecipients = mysqlTable("campaign_recipients", {
   id: int("id").autoincrement().primaryKey(),
@@ -59,6 +60,11 @@ export const campaignRecipients = mysqlTable("campaign_recipients", {
   warning: text("warning"),
   position: int("position").notNull(),
   status: mysqlEnum("status", recipientStatus).default("to_send").notNull(),
+  dedupeStatus: mysqlEnum("dedupeStatus", recipientDedupeStatus).default("new").notNull(),
+  dedupeReason: text("dedupeReason"),
+  matchedRecipientId: int("matchedRecipientId"),
+  matchedCampaignId: varchar("matchedCampaignId", { length: 32 }),
+  includeInGeneration: boolean("includeInGeneration").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, table => [index("campaign_recipients_campaign_position_idx").on(table.campaignId, table.position)]);
