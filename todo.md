@@ -67,3 +67,11 @@
 - [x] Recontrôler une route publique après le succès explicite du déploiement et documenter ce résultat.
 - [x] Conserver l’ajout manuel disponible dès l’import de la source, y compris après suppression complète de la liste.
 - [x] Ajouter des actions de tri groupées pour les nouveaux, les déjà envoyés et les correspondances à vérifier.
+- [x] Vérifier la synchronisation de la dernière version avec GitHub et le domaine publié.
+- [x] Pousser les éventuelles modifications restantes et confirmer la version finale distante.
+- [x] Sauvegarder le dernier suivi de synchronisation puis pousser la branche principale vers GitHub.
+- [x] Vérifier que le hash local et le hash de la branche GitHub principale sont identiques.
+- [x] Confirmer que le domaine publié correspond à la dernière version livrée.
+- [x] Sauvegarder le suivi de synchronisation dans un checkpoint final.
+- [x] Pousser le checkpoint final vers GitHub et vérifier que les hashes correspondent.
+- [x] Vérifier le domaine publié après le checkpoint final.
