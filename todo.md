@@ -115,3 +115,9 @@
 - [x] Sauvegarder un checkpoint après l’ajout de la recherche du tableau, puis publier cette version.
 - [x] Pousser la révision finale sur GitHub et vérifier que le hash distant correspond au hash local.
 - [x] Recontrôler la route publiée concernée après publication pour confirmer la recherche du tableau.
+- [x] Corriger l’emplacement ou la visibilité de la barre de recherche dans le tableau de la revue modale.
+- [x] Vérifier que la barre apparaît entre les actions d’export et le tableau avec son compteur.
+- [x] Tester la recherche depuis cette position et publier la correction.
+- [x] Sauvegarder un checkpoint après le repositionnement visible de la barre de recherche, puis publier cette version.
+- [x] Pousser la révision finale sur GitHub et vérifier que le hash distant correspond au hash local.
+- [x] Recontrôler la route publiée concernée pour confirmer la barre entre export et tableau, son compteur et le filtrage.
