@@ -56,7 +56,9 @@
 - [x] Permettre la suppression et la réintégration de chaque ligne avant génération.
 - [x] Ajouter des actions globales pour inclure ou retirer des groupes de destinataires triés.
 - [x] Rendre le récapitulatif de génération dépendant de la liste finale manipulée.
-- [ ] Corriger la configuration Docker pour rétablir la publication de l’application.
-- [ ] Tester le tri post-import et la construction de production corrigée.
+- [x] Corriger la configuration Docker pour rétablir la publication de l’application.
+- [x] Tester le tri post-import et la construction de production corrigée.
+- [ ] Déclencher une publication explicite après la correction Docker et vérifier son résultat.
+- [ ] Documenter que la version publiée correspond bien à l’image reconstruite avec le Dockerfile corrigé.
 - [x] Conserver l’ajout manuel disponible dès l’import de la source, y compris après suppression complète de la liste.
 - [x] Ajouter des actions de tri groupées pour les nouveaux, les déjà envoyés et les correspondances à vérifier.
