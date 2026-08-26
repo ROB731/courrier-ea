@@ -89,6 +89,13 @@ describe("courrierRouter multi-champs", () => {
     expect(result.recipients[0]).toMatchObject({ dedupeStatus: "sent_confirmed", includeInGeneration: false, matchedCampaignName: "Relance mai" });
   });
 
+  it("contrôle et enregistre dans le répertoire un destinataire ajouté manuellement", async () => {
+    mocks.getLetterTemplateForUser.mockResolvedValue(template);
+    const result = await courrierRouter.createCaller(createContext()).classifyManualRecipient({ templateId: template.id, sourceRow: 9, values: { DESTINATAIRE: "VISUEL CONCEPT", CONTACT: "Mme Kouassi", TELEPHONE: "+225 07 08 09 10 11", LOCALITE: "Abidjan" } });
+    expect(result).toMatchObject({ name: "VISUEL CONCEPT", sourceRow: 9, dedupeStatus: "new", includeInGeneration: true });
+    expect(mocks.saveImportedDirectoryRecipients).toHaveBeenCalledWith(7, [expect.objectContaining({ name: "VISUEL CONCEPT" })]);
+  });
+
   it("refuse la préparation sans correspondance pour DESTINATAIRE", async () => {
     mocks.getLetterTemplateForUser.mockResolvedValue(template);
     await expect(courrierRouter.createCaller(createContext()).prepareRecipients({ templateId: template.id, headers: Object.keys(sourceRows[0]!.values), rows: sourceRows, mappings: { CONTACT: "Contact" } })).rejects.toMatchObject({ code: "BAD_REQUEST" });

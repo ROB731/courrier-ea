@@ -80,6 +80,7 @@ export default function NewCampaign() {
   const [previewWarnings, setPreviewWarnings] = useState<string[]>([]);
   const [notice, setNotice] = useState("");
   const [showRecipients, setShowRecipients] = useState(false);
+  const [manualValues, setManualValues] = useState<Record<string, string>>({});
   const selectedTemplate = templates.find(template => template.id === templateId);
   const fields = selectedTemplate?.fields ?? uploadedFields;
   const validRecipients = useMemo(() => recipients.filter(recipient => recipient.issues.length === 0), [recipients]);
@@ -115,11 +116,25 @@ export default function NewCampaign() {
     },
   });
   const preview = trpc.courrier.preview.useMutation({ onSuccess: result => { setPreviewUrl(result.pdfUrl); setPreviewWarnings(result.warnings); } });
+  const classifyManualRecipient = trpc.courrier.classifyManualRecipient.useMutation({
+    onSuccess: recipient => {
+      setRecipients(current => [...current, recipient as PreparedRecipient]);
+      setManualValues(Object.fromEntries(fields.map(field => [field, ""])));
+      setPreviewUrl("");
+      setPreviewWarnings([]);
+      setPreviewIndex("0");
+      setNotice(`${recipient.name} a été ajouté à la liste et contrôlé avec les envois précédents.`);
+    },
+  });
   const createCampaign = trpc.courrier.createCampaign.useMutation({ onSuccess: async result => { await utils.courrier.campaigns.invalidate(); setLocation(`/campagnes/${result.campaignId}`); } });
 
   useEffect(() => {
     if (source && fields.length) setMappings(suggestedMappings(fields, source.headers));
   }, [templateId, source?.fileKey]);
+
+  useEffect(() => {
+    setManualValues(Object.fromEntries(fields.map(field => [field, ""])));
+  }, [fields.join("|")]);
 
   function applySource(result: SourceData) {
     setSource(result);
@@ -205,6 +220,40 @@ export default function NewCampaign() {
     setPreviewIndex("0");
   }
 
+  function removeRecipient(sourceRow: number) {
+    setRecipients(current => current.filter(recipient => recipient.sourceRow !== sourceRow));
+    setPreviewUrl("");
+    setPreviewWarnings([]);
+    setPreviewIndex("0");
+  }
+
+  function setAllRecipientInclusion(includeInGeneration: boolean) {
+    setRecipients(current => current.map(recipient => recipient.issues.length ? recipient : { ...recipient, includeInGeneration }));
+    setPreviewUrl("");
+    setPreviewWarnings([]);
+    setPreviewIndex("0");
+  }
+
+  function setCategoryInclusion(status: DedupeStatus, includeInGeneration: boolean) {
+    setRecipients(current => current.map(recipient => recipient.issues.length || recipient.dedupeStatus !== status ? recipient : { ...recipient, includeInGeneration }));
+    setPreviewUrl("");
+    setPreviewWarnings([]);
+    setPreviewIndex("0");
+  }
+
+  function keepOnlyNewRecipients() {
+    setRecipients(current => current.map(recipient => recipient.issues.length ? recipient : { ...recipient, includeInGeneration: recipient.dedupeStatus === "new" }));
+    setPreviewUrl("");
+    setPreviewWarnings([]);
+    setPreviewIndex("0");
+  }
+
+  function addManualRecipient() {
+    if (!templateId || !manualValues[REQUIRED_FIELD]?.trim()) return;
+    const nextSourceRow = Math.max(0, ...recipients.map(recipient => recipient.sourceRow)) + 1;
+    classifyManualRecipient.mutate({ templateId, sourceRow: nextSourceRow, values: manualValues });
+  }
+
   const requirements = [
     { label: "Nom de campagne", ready: Boolean(campaignName.trim()) },
     { label: "Modèle Word multi-champs", ready: Boolean(templateId && fields.length) },
@@ -246,10 +295,16 @@ export default function NewCampaign() {
               {prepare.error && <ErrorMessage text={prepare.error.message} />}
             </StepCard>}
 
-            {recipients.length > 0 && <StepCard number="5" title="Vérifier les envois précédents" description="Les destinataires marqués « Envoyé » dans vos campagnes précédentes sont exclus par défaut. Vous pouvez les réintégrer si vous souhaitez tout de même leur envoyer ce courrier.">
+            {source && fields.length > 0 && <StepCard number="5" title="Ajouter un destinataire manuellement" description="Cette fiche sera ajoutée à la liste de campagne puis contrôlée avec les courriers déjà envoyés. Elle reste disponible même si vous retirez toutes les lignes importées.">
+              <div className="grid gap-3 sm:grid-cols-2">{fields.map(field => <Input key={field} value={manualValues[field] ?? ""} onChange={event => setManualValues(current => ({ ...current, [field]: event.target.value }))} placeholder={`${labelForField(field)}${field === REQUIRED_FIELD ? " *" : ""}`} className="h-10 rounded-lg border-[#ddd9d0] bg-white text-sm" />)}</div>
+              <Button onClick={addManualRecipient} disabled={!manualValues[REQUIRED_FIELD]?.trim() || classifyManualRecipient.isPending} className="mt-3 h-9 rounded-lg bg-[#315e51] hover:bg-[#234b3f]">{classifyManualRecipient.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}Ajouter et contrôler</Button>{classifyManualRecipient.error && <ErrorMessage text={classifyManualRecipient.error.message} />}
+            </StepCard>}
+
+            {recipients.length > 0 && <StepCard number="6" title="Trier et ajuster la liste finale" description="Après comparaison avec les courriers déjà envoyés, retirez des lignes ou réintégrez un doublon avant de générer.">
               <div className="flex flex-wrap items-center gap-2"><Badge className="border-0 bg-[#e3f0e8] text-[#2c7250]">{includedRecipients.length} à générer</Badge>{confirmedSentRecipients.length > 0 && <Badge className="border-0 bg-[#f7eadf] text-[#99633a]">{confirmedSentRecipients.length} déjà envoyé{confirmedSentRecipients.length > 1 ? "s" : ""}</Badge>}{reviewRecipients.length > 0 && <Badge className="border-0 bg-[#fff3df] text-[#9b6d23]">{reviewRecipients.length} à vérifier</Badge>}{invalidRecipients.length > 0 && <Badge className="border-0 bg-[#fff0ed] text-[#a24e38]">{invalidRecipients.length} à corriger</Badge>}<button type="button" onClick={() => setShowRecipients(value => !value)} className="ml-auto inline-flex items-center gap-2 text-xs font-semibold text-[#315e51] hover:text-[#123d35]"><ListChecks className="h-4 w-4" />{showRecipients ? "Masquer la revue" : "Voir la revue"}</button></div>
+              <div className="mt-4 flex flex-wrap gap-2 rounded-xl border border-[#e6e2d9] bg-[#fcfbf8] p-3"><Button size="sm" variant="outline" onClick={() => setAllRecipientInclusion(true)} className="h-8 border-[#bfd7c5] bg-white text-[#347355] hover:bg-[#f2faf4]">Tout inclure</Button><Button size="sm" variant="outline" onClick={() => setAllRecipientInclusion(false)} className="h-8 border-[#e2c9b7] bg-white text-[#a35b3f] hover:bg-[#fff6f1]">Tout retirer de la génération</Button>{confirmedSentRecipients.length > 0 && <Button size="sm" variant="outline" onClick={() => setCategoryInclusion("sent_confirmed", true)} className="h-8 border-[#d8c8a4] bg-white text-[#8b6931] hover:bg-[#fffaf0]">Réintégrer les déjà envoyés</Button>}{reviewRecipients.length > 0 && <Button size="sm" variant="outline" onClick={() => setCategoryInclusion("review", true)} className="h-8 border-[#e4cf9d] bg-white text-[#9a7027] hover:bg-[#fff9eb]">Inclure les à vérifier</Button>}<Button size="sm" variant="outline" onClick={keepOnlyNewRecipients} className="h-8 border-[#c9d8cc] bg-white text-[#3d7154] hover:bg-[#f2faf4]">Conserver seulement les nouveaux</Button><Button size="sm" variant="outline" onClick={() => { setRecipients([]); setPreviewUrl(""); setPreviewWarnings([]); }} className="h-8 border-[#ead9d1] bg-white text-[#a2503b] hover:bg-[#fff5f2]">Supprimer toute la liste</Button></div>
               {excludedRecipients.length > 0 && <p className="mt-3 rounded-lg bg-[#fff9f0] px-3 py-2 text-xs leading-5 text-[#8c6334]">{excludedRecipients.length} destinataire{excludedRecipients.length > 1 ? "s" : ""} sera/seront conservé{excludedRecipients.length > 1 ? "s" : ""} dans la trace de campagne, mais ne figurera/figureront pas dans le PDF ni dans le ZIP.</p>}
-              {showRecipients && <div className="mt-4 overflow-x-auto rounded-xl border border-[#e5e2db]"><table className="min-w-[680px] text-left text-xs"><thead className="bg-[#f7f5ef] text-[#68766d]"><tr><th className="px-3 py-2 font-semibold">Ligne</th><th className="px-3 py-2 font-semibold">Destinataire</th><th className="px-3 py-2 font-semibold">Résultat du contrôle</th><th className="px-3 py-2 font-semibold">Décision</th></tr></thead><tbody className="divide-y divide-[#eeeae3]">{recipients.map(recipient => <tr key={recipient.sourceRow} className={recipient.issues.length ? "bg-[#fff8f4]" : !recipient.includeInGeneration ? "bg-[#fffdf8]" : "bg-white"}><td className="px-3 py-2 text-[#8a7750]">{recipient.sourceRow}</td><td className="px-3 py-2 font-medium text-[#34453b]">{recipient.name || "—"}</td><td className="max-w-72 px-3 py-2 leading-5 text-[#6e7a72]">{recipient.issues.length ? recipient.issues.join(" ") : recipient.dedupeStatus === "sent_confirmed" ? <span><strong className="font-semibold text-[#966039]">Déjà envoyé.</strong> {recipient.dedupeReason} {recipient.matchedCampaignName ? `Campagne : ${recipient.matchedCampaignName}.` : ""}</span> : recipient.dedupeStatus === "review" ? <span><strong className="font-semibold text-[#9a7027]">À vérifier.</strong> {recipient.dedupeReason} {recipient.matchedCampaignName ? `Campagne : ${recipient.matchedCampaignName}.` : ""}</span> : recipient.warning || "Nouveau destinataire"}</td><td className="px-3 py-2">{recipient.issues.length ? <span className="text-[#ad634b]">À corriger</span> : <Button size="sm" variant="outline" onClick={() => toggleRecipientInclusion(recipient.sourceRow)} className={recipient.includeInGeneration ? "h-8 border-[#e2c9b7] bg-white text-[#a35b3f] hover:bg-[#fff6f1]" : "h-8 border-[#bfd7c5] bg-white text-[#347355] hover:bg-[#f2faf4]"}>{recipient.includeInGeneration ? "Exclure" : "Réintégrer"}</Button>}</td></tr>)}</tbody></table></div>}
+              {showRecipients && <div className="mt-4 overflow-x-auto rounded-xl border border-[#e5e2db]"><table className="min-w-[760px] text-left text-xs"><thead className="bg-[#f7f5ef] text-[#68766d]"><tr><th className="px-3 py-2 font-semibold">Ligne</th><th className="px-3 py-2 font-semibold">Destinataire</th><th className="px-3 py-2 font-semibold">Résultat du contrôle</th><th className="px-3 py-2 font-semibold">Décision</th><th className="px-3 py-2 font-semibold">Liste</th></tr></thead><tbody className="divide-y divide-[#eeeae3]">{recipients.map(recipient => <tr key={recipient.sourceRow} className={recipient.issues.length ? "bg-[#fff8f4]" : !recipient.includeInGeneration ? "bg-[#fffdf8]" : "bg-white"}><td className="px-3 py-2 text-[#8a7750]">{recipient.sourceRow}</td><td className="px-3 py-2 font-medium text-[#34453b]">{recipient.name || "—"}</td><td className="max-w-72 px-3 py-2 leading-5 text-[#6e7a72]">{recipient.issues.length ? recipient.issues.join(" ") : recipient.dedupeStatus === "sent_confirmed" ? <span><strong className="font-semibold text-[#966039]">Déjà envoyé.</strong> {recipient.dedupeReason} {recipient.matchedCampaignName ? `Campagne : ${recipient.matchedCampaignName}.` : ""}</span> : recipient.dedupeStatus === "review" ? <span><strong className="font-semibold text-[#9a7027]">À vérifier.</strong> {recipient.dedupeReason} {recipient.matchedCampaignName ? `Campagne : ${recipient.matchedCampaignName}.` : ""}</span> : recipient.warning || "Nouveau destinataire"}</td><td className="px-3 py-2">{recipient.issues.length ? <span className="text-[#ad634b]">À corriger</span> : <Button size="sm" variant="outline" onClick={() => toggleRecipientInclusion(recipient.sourceRow)} className={recipient.includeInGeneration ? "h-8 border-[#e2c9b7] bg-white text-[#a35b3f] hover:bg-[#fff6f1]" : "h-8 border-[#bfd7c5] bg-white text-[#347355] hover:bg-[#f2faf4]"}>{recipient.includeInGeneration ? "Exclure" : "Réintégrer"}</Button>}</td><td className="px-3 py-2"><Button size="sm" variant="ghost" onClick={() => removeRecipient(recipient.sourceRow)} className="h-8 text-[#a2503b] hover:bg-[#fff0ed] hover:text-[#903f2e]">Retirer</Button></td></tr>)}</tbody></table></div>}
             </StepCard>}
           </div>
 

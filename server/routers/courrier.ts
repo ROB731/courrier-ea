@@ -227,6 +227,21 @@ export const courrierRouter = router({
     return { fields, recipients: comparedRecipients.map(recipient => ({ ...recipient, includeInGeneration: recipient.issues.length === 0 && recipient.dedupeStatus !== "sent_confirmed" })), validCount: validRecipients.length, invalidCount: recipients.filter(recipient => recipient.issues.length > 0).length, sentConfirmedCount, reviewCount, directory };
   }),
 
+  classifyManualRecipient: protectedProcedure.input(z.object({
+    templateId: z.string().min(8),
+    sourceRow: z.number().int().positive(),
+    values: valuesSchema,
+  })).mutation(async ({ ctx, input }) => {
+    const template = await getLetterTemplateForUser(input.templateId, ctx.user.id);
+    if (!template) throw new TRPCError({ code: "NOT_FOUND", message: "Modèle introuvable." });
+    const fields = parseTemplateFields(template.fieldsJson);
+    const values = validateRecipientValues(fields, input.values);
+    const warnings = warningsForValues(values);
+    const [classified] = classifyRecipientsAgainstSentHistory([{ sourceRow: input.sourceRow, name: values[REQUIRED_FIELD], values, warning: warnings.length ? warnings.join(" ") : null, issues: [] }], await getSentHistory(ctx.user.id));
+    await saveImportedDirectoryRecipients(ctx.user.id, [{ name: values[REQUIRED_FIELD], values }]);
+    return { ...classified, includeInGeneration: classified.dedupeStatus !== "sent_confirmed" };
+  }),
+
   preview: protectedProcedure.input(z.object({ templateId: z.string().min(8), values: valuesSchema })).mutation(async ({ ctx, input }) => {
     const template = await getLetterTemplateForUser(input.templateId, ctx.user.id);
     if (!template) throw new TRPCError({ code: "NOT_FOUND", message: "Modèle introuvable." });

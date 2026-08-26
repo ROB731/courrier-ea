@@ -52,3 +52,11 @@
 - [x] Permettre d’inclure manuellement un destinataire déjà envoyé avant la génération.
 - [x] Conserver la décision d’exclusion ou de réintégration dans la campagne.
 - [x] Tester les règles anti-doublon et la génération filtrée.
+- [x] Permettre l’ajout manuel de destinataires directement après l’import Excel.
+- [x] Permettre la suppression et la réintégration de chaque ligne avant génération.
+- [x] Ajouter des actions globales pour inclure ou retirer des groupes de destinataires triés.
+- [x] Rendre le récapitulatif de génération dépendant de la liste finale manipulée.
+- [ ] Corriger la configuration Docker pour rétablir la publication de l’application.
+- [ ] Tester le tri post-import et la construction de production corrigée.
+- [x] Conserver l’ajout manuel disponible dès l’import de la source, y compris après suppression complète de la liste.
+- [x] Ajouter des actions de tri groupées pour les nouveaux, les déjà envoyés et les correspondances à vérifier.
