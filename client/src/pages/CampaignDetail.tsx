@@ -1,4 +1,5 @@
 import DashboardLayout from "@/components/DashboardLayout";
+import AppendRecipientsDialog from "@/components/AppendRecipientsDialog";
 import { CampaignExportActions } from "@/components/CampaignExportActions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,7 @@ import {
   Check,
   Download,
   Loader2,
+  Plus,
   Send,
   TriangleAlert,
 } from "lucide-react";
@@ -19,12 +21,17 @@ import { Link } from "wouter";
 export default function CampaignDetail({ id }: { id: string }) {
   const utils = trpc.useUtils();
   const [printNotice, setPrintNotice] = useState<string | null>(null);
+  const [appendOpen, setAppendOpen] = useState(false);
+  const [lifecycleNotice, setLifecycleNotice] = useState<string | null>(null);
   const { data, isLoading, error } = trpc.courrier.campaignDetail.useQuery(
     { campaignId: id },
     { retry: false },
   );
   const updateStatus = trpc.courrier.updateRecipientStatus.useMutation({
     onSuccess: () => utils.courrier.campaignDetail.invalidate({ campaignId: id }),
+  });
+  const updateLifecycle = trpc.courrier.setCampaignLifecycle.useMutation({
+    onSuccess: async result => { await utils.courrier.campaignDetail.invalidate({ campaignId: id }); setLifecycleNotice(result.lifecycleStatus === "closed" ? "Campagne clôturée : aucun nouvel ajout ne sera accepté." : "Campagne rouverte : vous pouvez ajouter un nouveau lot."); },
   });
 
   if (isLoading) {
@@ -35,7 +42,9 @@ export default function CampaignDetail({ id }: { id: string }) {
     return <DashboardLayout><div className="mx-auto max-w-3xl rounded-2xl border border-[#efd7cf] bg-[#fff6f3] p-8 text-center"><TriangleAlert className="mx-auto h-6 w-6 text-[#b4563e]" /><h1 className="mt-3 font-serif text-2xl text-[#653628]">Campagne indisponible</h1><p className="mt-2 text-sm text-[#8e6256]">{error?.message || "La campagne demandée est introuvable."}</p><Link href="/campagnes"><Button variant="outline" className="mt-5">Retour à l’historique</Button></Link></div></DashboardLayout>;
   }
 
-  const { campaign, recipients } = data;
+  const { campaign, recipients, batches = [] } = data;
+  const batchHistory = batches as Array<{ id: string; sourceType: string; recipientCount: number; includedCount: number; createdAt: Date | string }>;
+
   const generatedRecipients = recipients.filter(recipient => recipient.includeInGeneration);
   const excludedRecipients = recipients.filter(recipient => !recipient.includeInGeneration);
   const sentCount = generatedRecipients.filter(recipient => recipient.status === "sent").length;
@@ -63,9 +72,12 @@ export default function CampaignDetail({ id }: { id: string }) {
           <p className="mt-3 text-sm text-[#78827a]">Créée le {formatCampaignDate(campaign.createdAt)} · {campaign.recipientCount} destinataire{campaign.recipientCount > 1 ? "s" : ""}</p>
         </div>
 
+        <div className="mt-6 flex flex-wrap items-center gap-3"><Button onClick={() => setAppendOpen(true)} disabled={campaign.lifecycleStatus === "closed"} className="rounded-xl bg-[#123d35] hover:bg-[#0b2d27]"><Plus className="mr-2 h-4 w-4" />Ajouter des destinataires</Button><Button variant="outline" onClick={() => updateLifecycle.mutate({ campaignId: campaign.id, lifecycleStatus: campaign.lifecycleStatus === "closed" ? "open" : "closed" })} disabled={updateLifecycle.isPending} className="rounded-xl border-[#cfdbd3] text-[#315e51]">{campaign.lifecycleStatus === "closed" ? "Rouvrir la campagne" : "Clôturer la campagne"}</Button>{campaign.lifecycleStatus === "closed" && <Badge className="border-0 bg-[#f5f3ee] text-[#68726b]">Campagne clôturée</Badge>}</div>{lifecycleNotice && <p className="mt-3 rounded-xl bg-[#edf4ef] px-3 py-2 text-sm text-[#3f725b]">{lifecycleNotice}</p>}
         {isReady && <CampaignExportActions pdfUrl={campaign.pdfFileUrl!} zipUrl={campaign.zipFileUrl!} onPrint={printCampaign} printNotice={printNotice} />}
 
         {campaign.status === "error" && <div className="mt-7 rounded-xl border border-[#eed9d1] bg-[#fff6f3] p-4 text-sm leading-6 text-[#95533f]"><TriangleAlert className="mr-2 inline h-4 w-4" />{campaign.errorMessage || "La génération a rencontré une erreur."}</div>}
+
+        {batchHistory.length > 0 && <section className="mt-7 rounded-2xl border border-[#e5e2db] bg-white p-5"><p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#9a7a40]">Historique des ajouts</p><div className="mt-3 flex flex-wrap gap-2">{batchHistory.map(batch => <span key={batch.id} className="rounded-lg bg-[#eef4ef] px-3 py-2 text-xs text-[#4f6b5d]">{batch.recipientCount} ajouté{batch.recipientCount > 1 ? "s" : ""} · {batch.sourceType} · {new Date(batch.createdAt).toLocaleDateString("fr-FR")}</span>)}</div></section>}
 
         <section className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Summary label="À générer" value={generatedRecipients.length} icon={Send} /><Summary label="Envoyés" value={sentCount} icon={Check} /><Summary label="À envoyer" value={generatedRecipients.length - sentCount} icon={Download} /><Summary label="Exclus" value={excludedRecipients.length} icon={TriangleAlert} /></section>
 
@@ -96,6 +108,7 @@ export default function CampaignDetail({ id }: { id: string }) {
           </div>
         </section>
       </div>
+      <AppendRecipientsDialog campaignId={campaign.id} templateId={campaign.templateId} open={appendOpen} onOpenChange={setAppendOpen} />
     </DashboardLayout>
   );
 }

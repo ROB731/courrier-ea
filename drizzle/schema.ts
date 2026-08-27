@@ -28,6 +28,9 @@ export const letterTemplates = mysqlTable("letter_templates", {
 }, table => [index("letter_templates_user_created_idx").on(table.userId, table.createdAt)]);
 
 export const campaignStatus = ["generating", "ready", "error"] as const;
+export const campaignLifecycleStatus = ["open", "closed"] as const;
+export const campaignBatchSource = ["excel", "paste", "directory", "manual"] as const;
+export const recipientOrigin = ["import", "directory", "manual"] as const;
 
 export const campaigns = mysqlTable("campaigns", {
   id: varchar("id", { length: 32 }).primaryKey(),
@@ -40,6 +43,8 @@ export const campaigns = mysqlTable("campaigns", {
   mappingsJson: text("mappingsJson"),
   recipientCount: int("recipientCount").notNull(),
   status: mysqlEnum("status", campaignStatus).default("generating").notNull(),
+  lifecycleStatus: mysqlEnum("lifecycleStatus", campaignLifecycleStatus).default("open").notNull(),
+  closedAt: timestamp("closedAt"),
   zipFileKey: varchar("zipFileKey", { length: 500 }),
   zipFileUrl: varchar("zipFileUrl", { length: 600 }),
   pdfFileKey: varchar("pdfFileKey", { length: 500 }),
@@ -55,6 +60,9 @@ export const recipientDedupeStatus = ["new", "sent_confirmed", "review"] as cons
 export const campaignRecipients = mysqlTable("campaign_recipients", {
   id: int("id").autoincrement().primaryKey(),
   campaignId: varchar("campaignId", { length: 32 }).notNull(),
+  batchId: varchar("batchId", { length: 32 }),
+  origin: mysqlEnum("origin", recipientOrigin).default("import").notNull(),
+  dedupeKey: varchar("dedupeKey", { length: 500 }),
   name: varchar("name", { length: 350 }).notNull(),
   valuesJson: text("valuesJson"),
   warning: text("warning"),
@@ -89,6 +97,23 @@ export type LetterTemplate = typeof letterTemplates.$inferSelect;
 export type InsertLetterTemplate = typeof letterTemplates.$inferInsert;
 export type Campaign = typeof campaigns.$inferSelect;
 export type InsertCampaign = typeof campaigns.$inferInsert;
+export const campaignBatches = mysqlTable("campaign_batches", {
+  id: varchar("id", { length: 32 }).primaryKey(),
+  campaignId: varchar("campaignId", { length: 32 }).notNull(),
+  sourceType: mysqlEnum("sourceType", campaignBatchSource).notNull(),
+  sourceFileKey: varchar("sourceFileKey", { length: 500 }),
+  sourceFileUrl: varchar("sourceFileUrl", { length: 600 }),
+  mappingsJson: text("mappingsJson"),
+  recipientCount: int("recipientCount").notNull(),
+  includedCount: int("includedCount").notNull(),
+  zipFileKey: varchar("zipFileKey", { length: 500 }),
+  zipFileUrl: varchar("zipFileUrl", { length: 600 }),
+  pdfFileKey: varchar("pdfFileKey", { length: 500 }),
+  pdfFileUrl: varchar("pdfFileUrl", { length: 600 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [index("campaign_batches_campaign_created_idx").on(table.campaignId, table.createdAt)]);
+
+export type CampaignBatch = typeof campaignBatches.$inferSelect;
 export type CampaignRecipient = typeof campaignRecipients.$inferSelect;
 export type RecipientDirectory = typeof recipientDirectory.$inferSelect;
 export type InsertRecipientDirectory = typeof recipientDirectory.$inferInsert;

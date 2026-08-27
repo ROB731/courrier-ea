@@ -2,6 +2,7 @@ import { and, asc, desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { nanoid } from "nanoid";
 import {
+  campaignBatches,
   campaignRecipients,
   campaigns,
   InsertCampaign,
@@ -75,6 +76,24 @@ export async function updateCampaign(campaignId: string, userId: number, values:
   await db.update(campaigns).set(values).where(and(eq(campaigns.id, campaignId), eq(campaigns.userId, userId)));
 }
 
+export async function createCampaignBatch(batch: typeof campaignBatches.$inferInsert): Promise<void> {
+  const db = await requireDb();
+  await db.insert(campaignBatches).values(batch);
+}
+
+export async function listCampaignBatchesForUser(campaignId: string, userId: number) {
+  const db = await requireDb();
+  return db.select({ batch: campaignBatches }).from(campaignBatches)
+    .innerJoin(campaigns, eq(campaignBatches.campaignId, campaigns.id))
+    .where(and(eq(campaignBatches.campaignId, campaignId), eq(campaigns.userId, userId)))
+    .orderBy(desc(campaignBatches.createdAt));
+}
+
+export async function updateCampaignBatch(batchId: string, campaignId: string, values: Partial<typeof campaignBatches.$inferInsert>): Promise<void> {
+  const db = await requireDb();
+  await db.update(campaignBatches).set(values).where(and(eq(campaignBatches.id, batchId), eq(campaignBatches.campaignId, campaignId)));
+}
+
 export async function listCampaignsForUser(userId: number) {
   const db = await requireDb();
   return db.select().from(campaigns).where(eq(campaigns.userId, userId)).orderBy(desc(campaigns.createdAt));
@@ -86,10 +105,10 @@ export async function getCampaignForUser(campaignId: string, userId: number) {
   return rows[0];
 }
 
-export async function createRecipients(campaignId: string, recipients: Array<{ name: string; values: Record<string, string>; warning: string | null; position: number; dedupeStatus: "new" | "sent_confirmed" | "review"; dedupeReason: string | null; matchedRecipientId: number | null; matchedCampaignId: string | null; includeInGeneration: boolean }>): Promise<void> {
+export async function createRecipients(campaignId: string, recipients: Array<{ name: string; values: Record<string, string>; warning: string | null; position: number; batchId?: string | null; origin?: "import" | "directory" | "manual"; dedupeKey?: string | null; dedupeStatus: "new" | "sent_confirmed" | "review"; dedupeReason: string | null; matchedRecipientId: number | null; matchedCampaignId: string | null; includeInGeneration: boolean }>): Promise<void> {
   if (!recipients.length) return;
   const db = await requireDb();
-  await db.insert(campaignRecipients).values(recipients.map(recipient => ({ campaignId, name: recipient.name, valuesJson: JSON.stringify(recipient.values), warning: recipient.warning, position: recipient.position, status: "to_send" as const, dedupeStatus: recipient.dedupeStatus, dedupeReason: recipient.dedupeReason, matchedRecipientId: recipient.matchedRecipientId, matchedCampaignId: recipient.matchedCampaignId, includeInGeneration: recipient.includeInGeneration })));
+  await db.insert(campaignRecipients).values(recipients.map(recipient => ({ campaignId, batchId: recipient.batchId ?? null, origin: recipient.origin ?? "import", dedupeKey: recipient.dedupeKey ?? null, name: recipient.name, valuesJson: JSON.stringify(recipient.values), warning: recipient.warning, position: recipient.position, status: "to_send" as const, dedupeStatus: recipient.dedupeStatus, dedupeReason: recipient.dedupeReason, matchedRecipientId: recipient.matchedRecipientId, matchedCampaignId: recipient.matchedCampaignId, includeInGeneration: recipient.includeInGeneration })));
 }
 
 export async function listCampaignRecipients(campaignId: string) {
@@ -97,9 +116,32 @@ export async function listCampaignRecipients(campaignId: string) {
   return db.select().from(campaignRecipients).where(eq(campaignRecipients.campaignId, campaignId)).orderBy(asc(campaignRecipients.position));
 }
 
+export async function getNextCampaignRecipientPosition(campaignId: string): Promise<number> {
+  const db = await requireDb();
+  const rows = await db.select({ position: campaignRecipients.position }).from(campaignRecipients)
+    .where(eq(campaignRecipients.campaignId, campaignId))
+    .orderBy(desc(campaignRecipients.position)).limit(1);
+  return (rows[0]?.position ?? 0) + 1;
+}
+
+export async function listCampaignRecipientDedupeKeys(campaignId: string) {
+  const db = await requireDb();
+  return db.select({ id: campaignRecipients.id, dedupeKey: campaignRecipients.dedupeKey, name: campaignRecipients.name })
+    .from(campaignRecipients).where(eq(campaignRecipients.campaignId, campaignId));
+}
+
 export async function updateRecipientStatus(recipientId: number, campaignId: string, status: "to_send" | "sent"): Promise<void> {
   const db = await requireDb();
   await db.update(campaignRecipients).set({ status }).where(and(eq(campaignRecipients.id, recipientId), eq(campaignRecipients.campaignId, campaignId)));
+}
+
+export async function listTrackingRecipientsForUser(userId: number) {
+  const db = await requireDb();
+  return db.select({ recipient: campaignRecipients, campaignName: campaigns.name, campaignLifecycleStatus: campaigns.lifecycleStatus, campaignStatus: campaigns.status })
+    .from(campaignRecipients)
+    .innerJoin(campaigns, eq(campaignRecipients.campaignId, campaigns.id))
+    .where(eq(campaigns.userId, userId))
+    .orderBy(desc(campaignRecipients.updatedAt));
 }
 
 export async function listSentRecipientsForUser(userId: number) {

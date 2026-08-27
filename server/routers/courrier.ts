@@ -7,17 +7,23 @@ import path from "node:path";
 import { z } from "zod";
 import {
   createCampaign,
+  createCampaignBatch,
   createLetterTemplate,
   createRecipients,
   getCampaignForUser,
   getLetterTemplateForUser,
   listCampaignRecipients,
+  listCampaignBatchesForUser,
+  listCampaignRecipientDedupeKeys,
   listCampaignsForUser,
+  listTrackingRecipientsForUser,
   listLetterTemplatesForUser,
   listSentRecipientsForUser,
   saveImportedDirectoryRecipients,
   updateCampaign,
+  updateCampaignBatch,
   updateRecipientStatus,
+  getNextCampaignRecipientPosition,
 } from "../db";
 import {
   FIELD_NAME_PATTERN,
@@ -47,6 +53,7 @@ const preparedRecipientSchema = z.object({
   sourceRow: z.number().int().positive(),
   values: valuesSchema,
   includeInGeneration: z.boolean().optional(),
+  origin: z.enum(["import", "directory", "manual"]).optional(),
 });
 
 type EngineResult = Record<string, unknown>;
@@ -60,6 +67,11 @@ function decodeUpload(contentBase64: string): Buffer {
 
 function asStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function campaignDedupeKey(name: string, values: MergeValues): string {
+  const normalizedName = name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim().replace(/\s+/g, " ");
+  return normalizedName;
 }
 
 function parseStoredValues(value: string | null): MergeValues {
@@ -152,13 +164,20 @@ export const courrierRouter = router({
 
   campaigns: protectedProcedure.query(({ ctx }) => listCampaignsForUser(ctx.user.id)),
 
+  tracking: protectedProcedure.query(async ({ ctx }) => {
+    const rows = await listTrackingRecipientsForUser(ctx.user.id);
+    return rows.map(row => ({ ...row.recipient, campaignName: row.campaignName, campaignLifecycleStatus: row.campaignLifecycleStatus, campaignStatus: row.campaignStatus, values: parseStoredValues(row.recipient.valuesJson) }));
+  }),
+
   campaignDetail: protectedProcedure.input(z.object({ campaignId: z.string().min(8) })).query(async ({ ctx, input }) => {
     const campaign = await getCampaignForUser(input.campaignId, ctx.user.id);
     if (!campaign) throw new TRPCError({ code: "NOT_FOUND", message: "Campagne introuvable." });
     const recipients = await listCampaignRecipients(campaign.id);
+    const batches = await listCampaignBatchesForUser(campaign.id, ctx.user.id);
     return {
       campaign: { ...campaign, mappings: parseStoredValues(campaign.mappingsJson) },
       recipients: recipients.map(recipient => ({ ...recipient, values: parseStoredValues(recipient.valuesJson) })),
+      batches: batches.map(entry => entry.batch),
     };
   }),
 
@@ -289,8 +308,10 @@ export const courrierRouter = router({
     const includedRecipients = classifiedRecipients.filter(recipient => recipient.includeInGeneration);
     if (!includedRecipients.length) throw new TRPCError({ code: "BAD_REQUEST", message: "Tous les destinataires sont déjà envoyés ou exclus. Réintégrez au moins un destinataire pour générer la campagne." });
     const campaignId = nanoid();
-    await createCampaign({ id: campaignId, userId: ctx.user.id, templateId: template.id, name: input.name, excelFileKey: input.sourceFileKey, excelFileUrl: input.sourceFileUrl, dataSourceType: input.sourceType, mappingsJson: JSON.stringify(input.mappings), recipientCount: includedRecipients.length, status: "generating" });
-    await createRecipients(campaignId, classifiedRecipients.map((recipient, index) => ({ ...recipient, dedupeStatus: recipient.dedupeStatus as DedupeStatus, dedupeReason: recipient.dedupeReason, matchedRecipientId: recipient.matchedRecipientId, matchedCampaignId: recipient.matchedCampaignId, position: index + 1 })));
+    const batchId = nanoid();
+    await createCampaign({ id: campaignId, userId: ctx.user.id, templateId: template.id, name: input.name, excelFileKey: input.sourceFileKey, excelFileUrl: input.sourceFileUrl, dataSourceType: input.sourceType, mappingsJson: JSON.stringify(input.mappings), recipientCount: includedRecipients.length, status: "generating", lifecycleStatus: "open" });
+    await createCampaignBatch({ id: batchId, campaignId, sourceType: input.sourceType, sourceFileKey: input.sourceFileKey, sourceFileUrl: input.sourceFileUrl, mappingsJson: JSON.stringify(input.mappings), recipientCount: classifiedRecipients.length, includedCount: includedRecipients.length });
+    await createRecipients(campaignId, classifiedRecipients.map((recipient, index) => ({ ...recipient, batchId, origin: "import" as const, dedupeKey: campaignDedupeKey(recipient.name, recipient.values), dedupeStatus: recipient.dedupeStatus as DedupeStatus, dedupeReason: recipient.dedupeReason, matchedRecipientId: recipient.matchedRecipientId, matchedCampaignId: recipient.matchedCampaignId, position: index + 1 })));
     const workDir = await makeWorkingDirectory();
     try {
       const modelPath = path.join(workDir, "modele.docx");
@@ -308,6 +329,7 @@ export const courrierRouter = router({
         storagePut(`courrier-ea/${ctx.user.id}/campagnes/${campaignId}/courriers-${dateSegment}.pdf`, pdf, "application/pdf"),
       ]);
       await updateCampaign(campaignId, ctx.user.id, { status: "ready", zipFileKey: zipFile.key, zipFileUrl: zipFile.url, pdfFileKey: pdfFile.key, pdfFileUrl: pdfFile.url, errorMessage: null });
+      await updateCampaignBatch(batchId, campaignId, { zipFileKey: zipFile.key, zipFileUrl: zipFile.url, pdfFileKey: pdfFile.key, pdfFileUrl: pdfFile.url });
       return { campaignId, count: Number(generation.count), zipUrl: zipFile.url, pdfUrl: pdfFile.url };
     } catch (error) {
       await updateCampaign(campaignId, ctx.user.id, { status: "error", errorMessage: error instanceof Error ? error.message.slice(0, 1000) : "Erreur inconnue lors de la génération." });
@@ -315,6 +337,54 @@ export const courrierRouter = router({
     } finally {
       await fs.rm(workDir, { recursive: true, force: true });
     }
+  }),
+
+  appendRecipients: protectedProcedure.input(z.object({
+    campaignId: z.string().min(8),
+    sourceType: z.enum(["excel", "paste", "directory", "manual"]),
+    sourceFileKey: z.string().min(4).optional(),
+    sourceFileUrl: z.string().min(4).optional(),
+    mappings: z.record(z.string().regex(FIELD_NAME_PATTERN), z.string().min(1).max(160)).default({}),
+    recipients: z.array(preparedRecipientSchema).min(1).max(500),
+  })).mutation(async ({ ctx, input }) => {
+    const campaign = await getCampaignForUser(input.campaignId, ctx.user.id);
+    if (!campaign) throw new TRPCError({ code: "NOT_FOUND", message: "Campagne introuvable." });
+    if (campaign.lifecycleStatus === "closed") throw new TRPCError({ code: "BAD_REQUEST", message: "Cette campagne est clôturée. Rouvrez-la ou créez une nouvelle campagne." });
+    const template = await getLetterTemplateForUser(campaign.templateId, ctx.user.id);
+    if (!template) throw new TRPCError({ code: "NOT_FOUND", message: "Le modèle de la campagne est introuvable." });
+    const fields = parseTemplateFields(template.fieldsJson);
+    const existingRecipients = await listCampaignRecipients(campaign.id);
+    const existingKeys = new Set(existingRecipients.map(recipient => campaignDedupeKey(recipient.name, parseStoredValues(recipient.valuesJson))));
+    const history = await getSentHistory(ctx.user.id);
+    const candidates = input.recipients.map(recipient => {
+      const values = validateRecipientValues(fields, recipient.values);
+      const warnings = warningsForValues(values);
+      return { sourceRow: recipient.sourceRow, name: values[REQUIRED_FIELD], values, warning: warnings.length ? warnings.join(" ") : null, requestedInclusion: recipient.includeInGeneration, origin: recipient.origin ?? (input.sourceType === "directory" ? "directory" : input.sourceType === "manual" ? "manual" : "import") };
+    });
+    const duplicateKeys = new Set<string>();
+    const uniqueCandidates = candidates.filter(candidate => {
+      const key = campaignDedupeKey(candidate.name, candidate.values);
+      if (existingKeys.has(key) || duplicateKeys.has(key)) return false;
+      duplicateKeys.add(key);
+      return true;
+    });
+    const classifiedRecipients = classifyRecipientsAgainstSentHistory(uniqueCandidates, history).map(recipient => ({ ...recipient, includeInGeneration: recipient.requestedInclusion === undefined ? recipient.dedupeStatus !== "sent_confirmed" : recipient.requestedInclusion }));
+    if (classifiedRecipients.length) {
+      const batchId = nanoid();
+      await createCampaignBatch({ id: batchId, campaignId: campaign.id, sourceType: input.sourceType, sourceFileKey: input.sourceFileKey ?? null, sourceFileUrl: input.sourceFileUrl ?? null, mappingsJson: JSON.stringify(input.mappings), recipientCount: classifiedRecipients.length, includedCount: classifiedRecipients.filter(recipient => recipient.includeInGeneration).length });
+      const nextPosition = await getNextCampaignRecipientPosition(campaign.id);
+      await createRecipients(campaign.id, classifiedRecipients.map((recipient, index) => ({ ...recipient, batchId, origin: recipient.origin, dedupeKey: campaignDedupeKey(recipient.name, recipient.values), dedupeStatus: recipient.dedupeStatus as DedupeStatus, dedupeReason: recipient.dedupeReason, matchedRecipientId: recipient.matchedRecipientId, matchedCampaignId: recipient.matchedCampaignId, position: nextPosition + index })));
+      const allRecipients = [...existingRecipients, ...classifiedRecipients];
+      await updateCampaign(campaign.id, ctx.user.id, { recipientCount: allRecipients.filter(recipient => "includeInGeneration" in recipient ? recipient.includeInGeneration : true).length });
+    }
+    return { addedCount: classifiedRecipients.length, skippedDuplicateCount: input.recipients.length - classifiedRecipients.length, sentConfirmedCount: classifiedRecipients.filter(recipient => recipient.dedupeStatus === "sent_confirmed").length, reviewCount: classifiedRecipients.filter(recipient => recipient.dedupeStatus === "review").length, recipients: classifiedRecipients };
+  }),
+
+  setCampaignLifecycle: protectedProcedure.input(z.object({ campaignId: z.string().min(8), lifecycleStatus: z.enum(["open", "closed"]) })).mutation(async ({ ctx, input }) => {
+    const campaign = await getCampaignForUser(input.campaignId, ctx.user.id);
+    if (!campaign) throw new TRPCError({ code: "NOT_FOUND", message: "Campagne introuvable." });
+    await updateCampaign(campaign.id, ctx.user.id, { lifecycleStatus: input.lifecycleStatus, closedAt: input.lifecycleStatus === "closed" ? new Date() : null });
+    return { success: true, lifecycleStatus: input.lifecycleStatus };
   }),
 
   updateRecipientStatus: protectedProcedure.input(z.object({ campaignId: z.string().min(8), recipientId: z.number().int().positive(), status: z.enum(["to_send", "sent"]) })).mutation(async ({ ctx, input }) => {

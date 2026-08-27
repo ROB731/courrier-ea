@@ -145,3 +145,23 @@
 - [x] Sauvegarder un nouveau checkpoint après le test de rendu réel de NewCampaign et vérifier `/campagnes/nouvelle` sur la version publiée.
 - [x] Pousser ensuite `main` et comparer explicitement `git rev-parse HEAD` avec `git ls-remote github refs/heads/main`.
 - [x] Retenter une vérification authentifiée ; si l’extension reste indisponible, informer l’utilisateur qu’un test connecté manuel est requis.
+
+- [x] Définir le fonctionnement des campagnes ouvertes avec ajout progressif de destinataires.
+- [x] Permettre le choix entre répertoire, import nouveau et combinaison des deux dans une campagne existante.
+- [x] Concevoir un onglet de suivi des envois par campagne et par destinataire.
+- [x] Définir les exports du suivi et les règles de dédoublonnage par campagne.
+- [x] Valider la proposition fonctionnelle avec l’utilisateur avant implémentation.
+
+- [x] Auditer le schéma actuel des campagnes et destinataires pour préserver les données existantes.
+- [x] Permettre l’ajout progressif de destinataires dans une campagne existante depuis le répertoire, Excel, collage ou ajout manuel.
+- [x] Empêcher les doublons à l’intérieur d’une même campagne tout en conservant l’historique entre campagnes.
+- [x] Ajouter l’onglet global « Suivi des envois » avec recherche, filtres et statuts « À envoyer » / « Envoyé ».
+- [x] Ajouter les exports Excel, CSV et impression du suivi filtré.
+- [ ] Tester, migrer prudemment, publier et vérifier l’absence de régression.
+- [x] Adapter les mocks du routeur aux fonctions de lots et de suivi ajoutées.
+- [x] Vérifier que la création initiale conserve ses tests de succès et d’erreur après l’ajout des lots.
+- [x] Tester l’ajout d’un lot à une campagne ouverte et l’ignorance des doublons déjà présents dans cette campagne.
+- [x] Tester le refus d’ajout dans une campagne clôturée.
+- [x] Tester la requête globale du suivi avec les statuts exacts « À envoyer » et « Envoyé ».
+- [x] Ajouter le mock de position suivante utilisé par l’API d’ajout progressif et relancer les tests.
+- [ ] Ajouter un test du suivi global couvrant au moins deux lignes (`to_send` et `sent`) et vérifier explicitement la propagation correcte des deux statuts attendus.
