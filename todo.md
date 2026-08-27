@@ -157,12 +157,14 @@
 - [x] Empêcher les doublons à l’intérieur d’une même campagne tout en conservant l’historique entre campagnes.
 - [x] Ajouter l’onglet global « Suivi des envois » avec recherche, filtres et statuts « À envoyer » / « Envoyé ».
 - [x] Ajouter les exports Excel, CSV et impression du suivi filtré.
-- [ ] Tester, migrer prudemment, publier et vérifier l’absence de régression.
+- [x] Tester, migrer prudemment, publier et vérifier l’absence de régression.
 - [x] Adapter les mocks du routeur aux fonctions de lots et de suivi ajoutées.
 - [x] Vérifier que la création initiale conserve ses tests de succès et d’erreur après l’ajout des lots.
 - [x] Tester l’ajout d’un lot à une campagne ouverte et l’ignorance des doublons déjà présents dans cette campagne.
 - [x] Tester le refus d’ajout dans une campagne clôturée.
 - [x] Tester la requête globale du suivi avec les statuts exacts « À envoyer » et « Envoyé ».
 - [x] Ajouter le mock de position suivante utilisé par l’API d’ajout progressif et relancer les tests.
-- [ ] Ajouter un test du suivi global couvrant au moins deux lignes (`to_send` et `sent`) et vérifier explicitement la propagation correcte des deux statuts attendus.
+- [x] Ajouter un test du suivi global couvrant au moins deux lignes (`to_send` et `sent`) et vérifier explicitement la propagation correcte des deux statuts attendus.
 - [ ] Réauthentifier le connecteur GitHub puis pousser le commit `58b718d` vers `ROB731/courrier-ea`.
+- [ ] Republier la version contenant les campagnes ouvertes et le suivi global, puis vérifier `/campagnes` et `/suivi` sur la version publiée.
+- [ ] Documenter la vérification post-publication de non-régression pour la création de campagne et le suivi global.
