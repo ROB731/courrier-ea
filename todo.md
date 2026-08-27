@@ -166,5 +166,5 @@
 - [x] Ajouter le mock de position suivante utilisé par l’API d’ajout progressif et relancer les tests.
 - [x] Ajouter un test du suivi global couvrant au moins deux lignes (`to_send` et `sent`) et vérifier explicitement la propagation correcte des deux statuts attendus.
 - [ ] Réauthentifier le connecteur GitHub puis pousser le commit `58b718d` vers `ROB731/courrier-ea`.
-- [ ] Republier la version contenant les campagnes ouvertes et le suivi global, puis vérifier `/campagnes` et `/suivi` sur la version publiée.
-- [ ] Documenter la vérification post-publication de non-régression pour la création de campagne et le suivi global.
+- [x] Republier la version contenant les campagnes ouvertes et le suivi global, puis vérifier `/campagnes` et `/suivi` sur la version publiée.
+- [x] Documenter la vérification post-publication de non-régression pour la création de campagne et le suivi global.

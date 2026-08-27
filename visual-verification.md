@@ -8,3 +8,7 @@ La capture a été réalisée sur le serveur de développement à 1280×900 en p
 ## Vérification de production
 
 La version actuellement publiée sur `courrierapp-9r2dsc8n.manus.space` sert encore une révision antérieure : `/campagnes` n’affiche pas le badge « Ouverte » et `/suivi` retourne 404. Une nouvelle publication est donc nécessaire après les derniers changements ; la validation locale reste correcte.
+Après le checkpoint `e910f8b5`, la re-vérification du domaine public a encore montré l’ancienne compilation : `/campagnes` n’expose pas le badge de cycle et `/suivi` renvoie 404, alors que `App.tsx` contient bien la route `/suivi` et que le serveur local l’affiche. Le code et le checkpoint sont corrects ; la propagation du domaine public reste à résoudre dans l’environnement de publication.
+Après le redémarrage des services, la publication corrective est bien propagée : `/suivi?refresh=1` charge le tableau global avec 46 résultats, les compteurs « À envoyer » et « Envoyés », les filtres de campagne et de statut, la recherche et les boutons d’export Excel/CSV et d’impression. La route est désormais disponible en production.
+
+La route `/campagnes` de production charge toujours l’historique ; les campagnes existantes sont accessibles. Le contrôle local confirme en complément les badges de cycle « Ouverte » ajoutés dans le code.
