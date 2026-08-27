@@ -165,3 +165,4 @@
 - [x] Tester la requête globale du suivi avec les statuts exacts « À envoyer » et « Envoyé ».
 - [x] Ajouter le mock de position suivante utilisé par l’API d’ajout progressif et relancer les tests.
 - [ ] Ajouter un test du suivi global couvrant au moins deux lignes (`to_send` et `sent`) et vérifier explicitement la propagation correcte des deux statuts attendus.
+- [ ] Réauthentifier le connecteur GitHub puis pousser le commit `58b718d` vers `ROB731/courrier-ea`.
