@@ -168,3 +168,5 @@
 - [ ] Réauthentifier le connecteur GitHub puis pousser le commit `58b718d` vers `ROB731/courrier-ea`.
 - [x] Republier la version contenant les campagnes ouvertes et le suivi global, puis vérifier `/campagnes` et `/suivi` sur la version publiée.
 - [x] Documenter la vérification post-publication de non-régression pour la création de campagne et le suivi global.
+- [x] Forcer en noir le texte inséré à la place des tags de destinataire sans modifier la mise en page du modèle Word.
+- [x] Ajouter un test de non-régression vérifiant la couleur noire du texte remplacé.

@@ -8,6 +8,7 @@ ne sont jamais reconstruits.
 from __future__ import annotations
 
 import argparse
+import copy
 import csv
 import io
 import json
@@ -23,6 +24,9 @@ from typing import Iterator
 
 from docx import Document
 from docx.text.paragraph import Paragraph
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from docx.shared import RGBColor
 from openpyxl import load_workbook
 from pypdf import PdfReader, PdfWriter
 
@@ -72,8 +76,32 @@ def inspect_fields(document: Document) -> tuple[list[str], dict[str, int], list[
     return list(counts.keys()), dict(counts), list(dict.fromkeys(malformed))
 
 
+def _clone_run_with_text(source_run, text: str, *, black: bool = False):
+    """Create a run beside source_run while preserving its Word formatting."""
+    new_r = OxmlElement("w:r")
+    if source_run._r.rPr is not None:
+        new_r.append(copy.deepcopy(source_run._r.rPr))
+    text_node = OxmlElement("w:t")
+    if text.startswith(" ") or text.endswith(" "):
+        text_node.set(qn("xml:space"), "preserve")
+    text_node.text = text
+    new_r.append(text_node)
+    source_run._r.addnext(new_r)
+    new_run = source_run._parent.part.document._body._parent if False else None
+    # Accessing the paragraph runs again gives python-docx a regular Run wrapper.
+    for candidate in source_run._parent.runs:
+        if candidate._r is new_r:
+            new_run = candidate
+            break
+    if new_run is None:
+        raise RuntimeError("Impossible de créer le texte remplacé dans le document Word.")
+    if black:
+        new_run.font.color.rgb = RGBColor(0, 0, 0)
+    return new_run
+
+
 def replace_field_in_paragraph(paragraph: Paragraph, field: str, value: str) -> int:
-    """Replace one field while retaining the surrounding run styling."""
+    """Replace one field, preserving surrounding runs and forcing inserted text to black."""
     token = f"{{{{{field}}}}}"
     replacements = 0
     while True:
@@ -100,11 +128,14 @@ def replace_field_in_paragraph(paragraph: Paragraph, field: str, value: str) -> 
         end_run = paragraph.runs[end_index]
         before = start_run.text[:start_offset]
         after = end_run.text[end_offset:]
-        start_run.text = before + value + (after if start_index == end_index else "")
+        start_run.text = before
         if start_index != end_index:
             for index in range(start_index + 1, end_index):
                 paragraph.runs[index].text = ""
             end_run.text = after
+        elif after:
+            _clone_run_with_text(start_run, after)
+        _clone_run_with_text(start_run, value, black=True)
         replacements += 1
     return replacements
 
