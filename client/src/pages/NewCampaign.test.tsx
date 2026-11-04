@@ -20,6 +20,7 @@ vi.mock("@/lib/trpc", () => ({
         useQuery: () => ({ data: [{ id: "template-12345678", name: "Lettre", fields: ["DESTINATAIRE", "TELEPHONE"] }], isLoading: false }),
       },
       uploadTemplate: { useMutation: () => ({ mutate: vi.fn(), isPending: false, error: null }) },
+      uploadTemplateVersion: { useMutation: () => ({ mutate: vi.fn(), isPending: false, error: null }) },
       importExcel: {
         useMutation: (options: { onSuccess?: (result: unknown) => void } = {}) => ({
           mutate: vi.fn(() => options.onSuccess?.({
@@ -69,6 +70,16 @@ describe("NewCampaign — contrôle automatique après import Excel", () => {
     render(<NewCampaign />);
     expect(screen.getByRole("heading", { name: /Préparez vos courriers/ })).toBeTruthy();
     expect(screen.getByText("Importer la liste Excel")).toBeTruthy();
+    expect(screen.getByText("Style du courrier")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Police"), { target: { value: "Georgia" } });
+    fireEvent.change(screen.getByLabelText("Taille"), { target: { value: "14" } });
+    fireEvent.change(screen.getByLabelText("Interligne"), { target: { value: "1.5" } });
+    fireEvent.change(screen.getByLabelText("Alignement"), { target: { value: "center" } });
+    fireEvent.change(screen.getByLabelText("Choisir la couleur du texte remplacé"), { target: { value: "#123456" } });
+    expect((screen.getByLabelText("Police") as HTMLSelectElement).value).toBe("Georgia");
+    expect((screen.getByLabelText("Taille") as HTMLSelectElement).value).toBe("14");
+    expect((screen.getByLabelText("Interligne") as HTMLSelectElement).value).toBe("1.5");
+    expect((screen.getByLabelText("Alignement") as HTMLSelectElement).value).toBe("center");
   });
 
   beforeEach(() => {
@@ -81,7 +92,7 @@ describe("NewCampaign — contrôle automatique après import Excel", () => {
   it("prépare les destinataires, ouvre le modal et applique les décisions de tri", async () => {
     render(<NewCampaign />);
     fireEvent.change(screen.getByLabelText("Choisir un modèle"), { target: { value: "template-12345678" } });
-    const input = document.querySelectorAll('input[type="file"]')[1] as HTMLInputElement;
+    const input = document.querySelectorAll('input[type="file"]')[2] as HTMLInputElement;
     fireEvent.change(input, { target: { files: [new File(["contenu"], "destinataires.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })] } });
 
     await waitFor(() => expect(testState.prepareCalls).toHaveLength(1));
@@ -118,7 +129,7 @@ describe("NewCampaign — contrôle automatique après import Excel", () => {
     testState.sourceHeaders = ["Société sans correspondance", "Téléphone"];
     render(<NewCampaign />);
     fireEvent.change(screen.getByLabelText("Choisir un modèle"), { target: { value: "template-12345678" } });
-    const input = document.querySelectorAll('input[type="file"]')[1] as HTMLInputElement;
+    const input = document.querySelectorAll('input[type="file"]')[2] as HTMLInputElement;
     fireEvent.change(input, { target: { files: [new File(["contenu"], "destinataires.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })] } });
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Recontrôler les données" })).toBeTruthy());

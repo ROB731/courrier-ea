@@ -24,6 +24,8 @@ export const letterTemplates = mysqlTable("letter_templates", {
   fileUrl: varchar("fileUrl", { length: 600 }).notNull(),
   placeholderCount: int("placeholderCount").notNull(),
   fieldsJson: text("fieldsJson"),
+  parentTemplateId: varchar("parentTemplateId", { length: 32 }),
+  versionNumber: int("versionNumber").default(1).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, table => [index("letter_templates_user_created_idx").on(table.userId, table.createdAt)]);
 
@@ -41,6 +43,7 @@ export const campaigns = mysqlTable("campaigns", {
   excelFileUrl: varchar("excelFileUrl", { length: 600 }).notNull(),
   dataSourceType: varchar("dataSourceType", { length: 20 }).default("excel").notNull(),
   mappingsJson: text("mappingsJson"),
+  styleJson: text("styleJson"),
   recipientCount: int("recipientCount").notNull(),
   status: mysqlEnum("status", campaignStatus).default("generating").notNull(),
   lifecycleStatus: mysqlEnum("lifecycleStatus", campaignLifecycleStatus).default("open").notNull(),

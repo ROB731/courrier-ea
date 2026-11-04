@@ -43,6 +43,13 @@
       "when": 1787841303831,
       "tag": "0005_whole_khan",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1789216990420,
+      "tag": "0006_opposite_magneto",
+      "breakpoints": true
     }
   ]
 }

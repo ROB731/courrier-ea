@@ -1,5 +1,5 @@
-import { and, asc, desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
+import { and, asc, desc, eq, or } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import {
   campaignBatches,
@@ -63,6 +63,14 @@ export async function listLetterTemplatesForUser(userId: number) {
 export async function getLetterTemplateForUser(templateId: string, userId: number) {
   const db = await requireDb();
   const rows = await db.select().from(letterTemplates).where(and(eq(letterTemplates.id, templateId), eq(letterTemplates.userId, userId))).limit(1);
+  return rows[0];
+}
+
+export async function getLatestTemplateVersion(userId: number, parentTemplateId: string) {
+  const db = await requireDb();
+  const rows = await db.select().from(letterTemplates)
+    .where(and(eq(letterTemplates.userId, userId), or(eq(letterTemplates.id, parentTemplateId), eq(letterTemplates.parentTemplateId, parentTemplateId))))
+    .orderBy(desc(letterTemplates.versionNumber)).limit(1);
   return rows[0];
 }
 

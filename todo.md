@@ -165,8 +165,20 @@
 - [x] Tester la requête globale du suivi avec les statuts exacts « À envoyer » et « Envoyé ».
 - [x] Ajouter le mock de position suivante utilisé par l’API d’ajout progressif et relancer les tests.
 - [x] Ajouter un test du suivi global couvrant au moins deux lignes (`to_send` et `sent`) et vérifier explicitement la propagation correcte des deux statuts attendus.
-- [ ] Réauthentifier le connecteur GitHub puis pousser le commit `58b718d` vers `ROB731/courrier-ea`.
+- [x] Réauthentifier le connecteur GitHub puis pousser le commit `440ba29` vers `ROB731/courrier-ea`.
 - [x] Republier la version contenant les campagnes ouvertes et le suivi global, puis vérifier `/campagnes` et `/suivi` sur la version publiée.
 - [x] Documenter la vérification post-publication de non-régression pour la création de campagne et le suivi global.
 - [x] Forcer en noir le texte inséré à la place des tags de destinataire sans modifier la mise en page du modèle Word.
 - [x] Ajouter un test de non-régression vérifiant la couleur noire du texte remplacé.
+- [x] Définir les limites de personnalisation compatibles avec la fidélité du modèle Word.
+- [x] Ajouter les options de police, taille, couleur, interligne et alignement pour les textes remplacés.
+- [x] Transmettre la configuration de style aux parcours de création, prévisualisation et génération.
+- [x] Ajouter des tests de validation des styles et publier sans régression.
+- [x] Élargir la modale d’ajout de destinataires et réorganiser ses colonnes pour éviter les contenus comprimés et les chevauchements.
+- [x] Vérifier le rendu responsive de la modale et publier la correction sans régression.
+- [x] Permettre de modifier les modèles Word déjà enregistrés sans écraser leur version originale.
+- [x] Permettre de modifier les réglages et de régénérer les lettres d’une campagne existante avec confirmation et nouvelle version.
+- [x] Vérifier que les téléchargements, l’historique et les fichiers existants restent accessibles après modification.
+- [x] Ajouter l’édition versionnée des modèles Word déjà enregistrés, avec conservation de l’original.
+- [x] Ajouter la régénération versionnée d’une campagne existante avec confirmation explicite.
+- [x] Conserver les anciens exports Word, PDF et ZIP après chaque nouvelle génération.

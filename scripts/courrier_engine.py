@@ -26,7 +26,8 @@ from docx import Document
 from docx.text.paragraph import Paragraph
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import RGBColor
+from docx.shared import Pt, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from openpyxl import load_workbook
 from pypdf import PdfReader, PdfWriter
 
@@ -76,7 +77,68 @@ def inspect_fields(document: Document) -> tuple[list[str], dict[str, int], list[
     return list(counts.keys()), dict(counts), list(dict.fromkeys(malformed))
 
 
-def _clone_run_with_text(source_run, text: str, *, black: bool = False):
+STYLE_DEFAULTS = {
+    "fontFamily": None,
+    "fontSize": None,
+    "color": "#000000",
+    "lineSpacing": None,
+    "alignment": None,
+}
+
+
+def normalise_style(raw_style: dict | None) -> dict:
+    """Validate and normalise user style options without affecting omitted values."""
+    style = {**STYLE_DEFAULTS, **(raw_style or {})}
+    family = style.get("fontFamily")
+    if family is not None:
+        family = str(family).strip()
+        if not re.fullmatch(r"[A-Za-zÀ-ÿ0-9 .,'-]{1,80}", family):
+            raise ValueError("La police choisie est invalide.")
+    size = style.get("fontSize")
+    if size is not None:
+        size = float(size)
+        if not 8 <= size <= 36:
+            raise ValueError("La taille doit être comprise entre 8 et 36 points.")
+    color = str(style.get("color") or "#000000").strip().upper()
+    if not re.fullmatch(r"#[0-9A-F]{6}", color):
+        raise ValueError("La couleur doit être un code hexadécimal au format #RRGGBB.")
+    spacing = style.get("lineSpacing")
+    if spacing is not None:
+        spacing = float(spacing)
+        if not 0.8 <= spacing <= 3:
+            raise ValueError("L’interligne doit être compris entre 0,8 et 3.")
+    alignment = style.get("alignment")
+    if alignment is not None and alignment not in {"left", "center", "right", "justify"}:
+        raise ValueError("L’alignement sélectionné est invalide.")
+    return {"fontFamily": family, "fontSize": size, "color": color, "lineSpacing": spacing, "alignment": alignment}
+
+
+def apply_run_style(run, style: dict) -> None:
+    """Apply typography to the inserted run, preserving all omitted template styles."""
+    if style["fontFamily"]:
+        run.font.name = style["fontFamily"]
+        rpr = run._element.get_or_add_rPr()
+        fonts = rpr.rFonts
+        if fonts is None:
+            fonts = OxmlElement("w:rFonts")
+            rpr.insert(0, fonts)
+        for attribute in ("ascii", "hAnsi", "eastAsia", "cs"):
+            fonts.set(qn(f"w:{attribute}"), style["fontFamily"])
+    if style["fontSize"] is not None:
+        run.font.size = Pt(style["fontSize"])
+    color = style["color"].lstrip("#")
+    run.font.color.rgb = RGBColor.from_string(color)
+
+
+def apply_paragraph_style(paragraph: Paragraph, style: dict) -> None:
+    if style["lineSpacing"] is not None:
+        paragraph.paragraph_format.line_spacing = style["lineSpacing"]
+    alignment_map = {"left": WD_ALIGN_PARAGRAPH.LEFT, "center": WD_ALIGN_PARAGRAPH.CENTER, "right": WD_ALIGN_PARAGRAPH.RIGHT, "justify": WD_ALIGN_PARAGRAPH.JUSTIFY}
+    if style["alignment"] is not None:
+        paragraph.alignment = alignment_map[style["alignment"]]
+
+
+def _clone_run_with_text(source_run, text: str, *, style: dict | None = None):
     """Create a run beside source_run while preserving its Word formatting."""
     new_r = OxmlElement("w:r")
     if source_run._r.rPr is not None:
@@ -87,7 +149,7 @@ def _clone_run_with_text(source_run, text: str, *, black: bool = False):
     text_node.text = text
     new_r.append(text_node)
     source_run._r.addnext(new_r)
-    new_run = source_run._parent.part.document._body._parent if False else None
+    new_run = None
     # Accessing the paragraph runs again gives python-docx a regular Run wrapper.
     for candidate in source_run._parent.runs:
         if candidate._r is new_r:
@@ -95,13 +157,13 @@ def _clone_run_with_text(source_run, text: str, *, black: bool = False):
             break
     if new_run is None:
         raise RuntimeError("Impossible de créer le texte remplacé dans le document Word.")
-    if black:
-        new_run.font.color.rgb = RGBColor(0, 0, 0)
+    if style is not None:
+        apply_run_style(new_run, style)
     return new_run
 
 
-def replace_field_in_paragraph(paragraph: Paragraph, field: str, value: str) -> int:
-    """Replace one field, preserving surrounding runs and forcing inserted text to black."""
+def replace_field_in_paragraph(paragraph: Paragraph, field: str, value: str, style: dict) -> int:
+    """Replace one field, preserving surrounding runs and applying configured typography."""
     token = f"{{{{{field}}}}}"
     replacements = 0
     while True:
@@ -135,7 +197,8 @@ def replace_field_in_paragraph(paragraph: Paragraph, field: str, value: str) -> 
             end_run.text = after
         elif after:
             _clone_run_with_text(start_run, after)
-        _clone_run_with_text(start_run, value, black=True)
+        _clone_run_with_text(start_run, value, style=style)
+        apply_paragraph_style(paragraph, style)
         replacements += 1
     return replacements
 
@@ -178,16 +241,17 @@ def validate_template(document: Document) -> tuple[list[str], dict[str, int]]:
     return fields, counts
 
 
-def create_letter(template_path: Path, destination_path: Path, raw_values: dict) -> None:
+def create_letter(template_path: Path, destination_path: Path, raw_values: dict, raw_style: dict | None = None) -> None:
     document = Document(template_path)
     fields, counts = validate_template(document)
     values = clean_values(raw_values)
+    style = normalise_style(raw_style)
     if not values.get(REQUIRED_FIELD):
         raise ValueError("La valeur du champ obligatoire {{DESTINATAIRE}} est manquante.")
     replacements = 0
     for paragraph in iter_document_paragraphs(document):
         for field in fields:
-            replacements += replace_field_in_paragraph(paragraph, field, values.get(field, ""))
+            replacements += replace_field_in_paragraph(paragraph, field, values.get(field, ""), style)
     expected = sum(counts.values())
     if replacements != expected:
         raise ValueError("Un ou plusieurs champs du modèle n’ont pas pu être remplacés de manière contrôlée.")
@@ -236,7 +300,12 @@ def merge_pdfs(pdf_files: list[Path], output_path: Path) -> None:
 
 
 def rows_from_headers(headers: list[str], records: list[list[object]]) -> dict:
-    normalized_headers = [header.strip() for header in headers]
+    # Excel conserve parfois des colonnes vides à droite (ou entre deux
+    # colonnes utilisées), notamment après une mise en forme manuelle. Ces
+    # cellules ne sont pas des champs importables : on les retire avec leur
+    # index d’origine pour ne jamais décaler les valeurs des autres colonnes.
+    header_entries = [(index, header.strip()) for index, header in enumerate(headers) if header and header.strip()]
+    normalized_headers = [header for _, header in header_entries]
     if not any(normalized_headers):
         raise ValueError("La source ne contient aucun en-tête exploitable.")
     normalized = [header.casefold() for header in normalized_headers]
@@ -247,9 +316,8 @@ def rows_from_headers(headers: list[str], records: list[list[object]]) -> dict:
     recipients = []
     for row_number, row in enumerate(records, start=2):
         values = {
-            header: "" if index >= len(row) or row[index] is None else str(row[index]).strip()
-            for index, header in enumerate(normalized_headers)
-            if header
+            header: "" if source_index >= len(row) or row[source_index] is None else str(row[source_index]).strip()
+            for source_index, header in header_entries
         }
         if not any(values.values()):
             continue
@@ -310,8 +378,9 @@ def preview(args: argparse.Namespace) -> dict:
     output_pdf = Path(args.output_pdf)
     output_docx.parent.mkdir(parents=True, exist_ok=True)
     values = json.loads(Path(args.values_json).read_text(encoding="utf-8"))
+    style = json.loads(Path(args.style_json).read_text(encoding="utf-8")) if args.style_json else None
     cleaned_values = clean_values(values)
-    create_letter(Path(args.template), output_docx, cleaned_values)
+    create_letter(Path(args.template), output_docx, cleaned_values, style)
     convert_to_pdf([output_docx], output_pdf.parent)
     generated_pdf = output_pdf.parent / f"{output_docx.stem}.pdf"
     if generated_pdf != output_pdf:
@@ -334,7 +403,7 @@ def generate(args: argparse.Namespace) -> dict:
         if not name:
             continue
         output_path = output_dir / f"Lettre_{position:03d}_{safe_stem(name)}.docx"
-        create_letter(template_path, output_path, values)
+        create_letter(template_path, output_path, values, getattr(args, "style", None))
         docx_files.append(output_path)
     if not docx_files:
         raise ValueError("Aucun courrier n’a pu être généré.")
@@ -366,6 +435,7 @@ def main() -> None:
     preview_parser.add_argument("--values-json", required=True)
     preview_parser.add_argument("--output-docx", required=True)
     preview_parser.add_argument("--output-pdf", required=True)
+    preview_parser.add_argument("--style-json")
 
     generate_parser = subparsers.add_parser("generate")
     generate_parser.add_argument("--template", required=True)
@@ -373,6 +443,7 @@ def main() -> None:
     generate_parser.add_argument("--output-dir", required=True)
     generate_parser.add_argument("--zip-output", required=True)
     generate_parser.add_argument("--pdf-output", required=True)
+    generate_parser.add_argument("--style-json")
 
     args = parser.parse_args()
     if args.command == "inspect-model":
@@ -384,6 +455,10 @@ def main() -> None:
     elif args.command == "preview":
         result = preview(args)
     else:
+        if getattr(args, "style_json", None):
+            args.style = json.loads(Path(args.style_json).read_text(encoding="utf-8"))
+        else:
+            args.style = None
         result = generate(args)
     print(json.dumps(result, ensure_ascii=False))
 

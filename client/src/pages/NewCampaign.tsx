@@ -1,5 +1,6 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import { DirectoryRecipientPicker, type DirectoryRecipient } from "@/components/DirectoryRecipientPicker";
+import { LetterStyleControls, type LetterStyle } from "@/components/LetterStyleControls";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -91,6 +92,7 @@ export default function NewCampaign() {
   const [recipientView, setRecipientView] = useState<RecipientView>("all");
   const [tableQuery, setTableQuery] = useState("");
   const [manualValues, setManualValues] = useState<Record<string, string>>({});
+  const [letterStyle, setLetterStyle] = useState<LetterStyle>({ color: "#000000" });
   const lastAutoPreparationKey = useRef<string | null>(null);
   const selectedTemplate = templates.find(template => template.id === templateId);
   const fields = selectedTemplate?.fields ?? uploadedFields;
@@ -132,6 +134,15 @@ export default function NewCampaign() {
       setUploadedFields(result.fields);
       setMappings(current => source ? { ...suggestedMappings(result.fields, source.headers), ...current } : current);
       setNotice(`Le modèle est validé. ${result.fields.length} champ${result.fields.length > 1 ? "s" : ""} de fusion détecté${result.fields.length > 1 ? "s" : ""}.`);
+    },
+  });
+  const uploadTemplateVersion = trpc.courrier.uploadTemplateVersion.useMutation({
+    onSuccess: async result => {
+      await utils.courrier.templates.invalidate();
+      setTemplateId(result.id);
+      setUploadedFields(result.fields);
+      setMappings(current => source ? { ...suggestedMappings(result.fields, source.headers), ...current } : current);
+      setNotice(`Nouvelle version du modèle enregistrée (v${result.versionNumber}). L’ancienne version reste conservée.`);
     },
   });
   const importExcel = trpc.courrier.importExcel.useMutation({ onSuccess: result => applySource(result as SourceData) });
@@ -195,6 +206,14 @@ export default function NewCampaign() {
     catch { setNotice("La lecture du fichier Word a échoué."); }
   }
 
+  async function handleTemplateVersion(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file || !templateId) return;
+    setNotice("");
+    try { uploadTemplateVersion.mutate({ parentTemplateId: templateId, fileName: file.name, contentBase64: await readFileAsBase64(file) }); }
+    catch { setNotice("La lecture de la nouvelle version Word a échoué."); }
+  }
+
   async function handleExcel(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -239,7 +258,7 @@ export default function NewCampaign() {
   function requestPreview() {
     const selected = includedRecipients[Number(previewIndex)] ?? includedRecipients[0];
     if (!templateId || !selected) return;
-    preview.mutate({ templateId, values: selected.values });
+    preview.mutate({ templateId, values: selected.values, style: letterStyle });
   }
 
   function generateCampaign() {
@@ -251,6 +270,7 @@ export default function NewCampaign() {
       sourceFileUrl: source.fileUrl,
       sourceType: source.sourceType,
       mappings,
+      style: letterStyle,
       recipients: validRecipients.map(recipient => ({ sourceRow: recipient.sourceRow, values: recipient.values, includeInGeneration: recipient.includeInGeneration })),
     });
   }
@@ -358,6 +378,7 @@ export default function NewCampaign() {
             <StepCard number="2" title="Choisir un modèle Word" description="Le modèle doit contenir {{DESTINATAIRE}} et peut contenir {{CONTACT}}, {{TELEPHONE}}, {{LOCALITE}}, {{ADRESSE}} ou vos propres champs.">
               {templatesLoading ? <p className="text-sm text-[#89918b]">Chargement des modèles…</p> : <select value={templateId} onChange={event => { setTemplateId(event.target.value); setUploadedFields([]); setRecipients([]); setPreviewUrl(""); }} className="h-11 w-full rounded-xl border border-[#ddd9d0] bg-[#fcfbf8] px-3 text-sm text-[#34453b] focus:outline-none focus:ring-2 focus:ring-[#c89c52]" aria-label="Choisir un modèle"><option value="">Sélectionner un modèle déjà importé</option>{templates.map(template => <option value={template.id} key={template.id}>{template.name}</option>)}</select>}
               <label className="mt-3 flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-dashed border-[#cfc7b8] bg-[#fbfaf7] px-4 py-3 transition hover:border-[#9a7a40] hover:bg-[#fffdf8]"><span className="flex items-center gap-3"><span className="grid h-9 w-9 place-items-center rounded-lg bg-[#edf1ee] text-[#315e51]"><FileText className="h-4 w-4" /></span><span><span className="block text-sm font-medium text-[#34453b]">Importer un nouveau modèle</span><span className="block text-xs text-[#89918b]">Document Word .docx uniquement</span></span></span>{uploadTemplate.isPending ? <Loader2 className="h-4 w-4 animate-spin text-[#9a7a40]" /> : <UploadCloud className="h-4 w-4 text-[#9a7a40]" />}<input className="sr-only" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" type="file" onChange={handleTemplate} /></label>
+              <label className={`mt-3 flex items-center justify-between gap-4 rounded-xl border border-dashed px-4 py-3 transition ${templateId ? "cursor-pointer border-[#b9cfc0] bg-[#f7fbf8] hover:border-[#315e51]" : "cursor-not-allowed border-[#e7e4dc] bg-[#faf9f5] opacity-60"}`}><span className="flex items-center gap-3"><span className="grid h-9 w-9 place-items-center rounded-lg bg-[#e7f0e9] text-[#315e51]"><FileText className="h-4 w-4" /></span><span><span className="block text-sm font-medium text-[#34453b]">Remplacer par une nouvelle version</span><span className="block text-xs text-[#89918b]">L’ancienne version restera disponible</span></span></span>{uploadTemplateVersion.isPending ? <Loader2 className="h-4 w-4 animate-spin text-[#315e51]" /> : <UploadCloud className="h-4 w-4 text-[#315e51]" />}<input className="sr-only" disabled={!templateId} accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" type="file" onChange={handleTemplateVersion} /></label>
               {fields.length > 0 && <div className="mt-4 rounded-xl bg-[#edf4ef] p-3"><p className="text-xs font-semibold text-[#347355]">Champs détectés dans le modèle</p><div className="mt-2 flex flex-wrap gap-2">{fields.map(field => <span key={field} className="rounded-md bg-white px-2.5 py-1 text-xs font-medium text-[#315e51]">{`{{${field}}}`}</span>)}</div></div>}
               {uploadTemplate.error && <ErrorMessage text={uploadTemplate.error.message} />}
             </StepCard>
@@ -370,7 +391,11 @@ export default function NewCampaign() {
               {source && <div className="mt-4 rounded-xl border border-[#dce8df] bg-[#f5f7f4] p-4"><p className="text-sm font-medium text-[#315e51]">{source.rows.length} ligne{source.rows.length > 1 ? "s" : ""} détectée{source.rows.length > 1 ? "s" : ""} · source {source.sourceType === "excel" ? "Excel" : source.sourceType === "directory" ? "répertoire" : "collée"}</p><div className="mt-3 flex flex-wrap gap-2">{source.headers.map(header => <span key={header} className="rounded-md bg-white px-2.5 py-1 text-xs text-[#5c6861] shadow-sm">{header}</span>)}</div></div>}
             </StepCard>
 
-            {source && <StepCard number="4" title="Revue de la liste" description="Le tri s’ouvre automatiquement après l’import. Vous pouvez le rouvrir à tout moment pour corriger et décider qui recevra un courrier.">
+            <StepCard number="4" title="Personnaliser le style" description="Choisissez la présentation des textes remplacés. Les autres éléments du document restent fidèles au modèle Word.">
+              <LetterStyleControls value={letterStyle} onChange={style => { setLetterStyle(style); setPreviewUrl(""); setPreviewWarnings([]); }} />
+            </StepCard>
+
+            {source && <StepCard number="5" title="Revue de la liste" description="Le tri s’ouvre automatiquement après l’import. Vous pouvez le rouvrir à tout moment pour corriger et décider qui recevra un courrier.">
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#dce8df] bg-[#f5f7f4] p-4"><div><p className="text-sm font-semibold text-[#315e51]">{recipients.length ? `${includedRecipients.length} destinataire${includedRecipients.length > 1 ? "s" : ""} prêt${includedRecipients.length > 1 ? "s" : ""} à générer` : "Contrôle de la liste à effectuer"}</p><p className="mt-1 text-xs text-[#64746b]">Décisions, doublons, corrections et ajout manuel sont regroupés dans une seule fenêtre.</p></div><Button onClick={() => setReviewModalOpen(true)} className="h-10 rounded-xl bg-[#315e51] hover:bg-[#234b3f]"><ListChecks className="mr-2 h-4 w-4" />{recipients.length ? "Ouvrir le tri" : "Ouvrir le contrôle"}</Button></div>
             </StepCard>}
           </div>

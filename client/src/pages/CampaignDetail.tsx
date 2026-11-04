@@ -1,7 +1,9 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import AppendRecipientsDialog from "@/components/AppendRecipientsDialog";
+import { LetterStyleControls, type LetterStyle } from "@/components/LetterStyleControls";
 import { CampaignExportActions } from "@/components/CampaignExportActions";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { launchPdfPrint } from "@/lib/campaignOutput";
 import { formatCampaignDate } from "@/lib/files";
@@ -15,13 +17,15 @@ import {
   Send,
   TriangleAlert,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 
 export default function CampaignDetail({ id }: { id: string }) {
   const utils = trpc.useUtils();
   const [printNotice, setPrintNotice] = useState<string | null>(null);
   const [appendOpen, setAppendOpen] = useState(false);
+  const [regenerateOpen, setRegenerateOpen] = useState(false);
+  const [letterStyle, setLetterStyle] = useState<LetterStyle>({});
   const [lifecycleNotice, setLifecycleNotice] = useState<string | null>(null);
   const { data, isLoading, error } = trpc.courrier.campaignDetail.useQuery(
     { campaignId: id },
@@ -30,9 +34,12 @@ export default function CampaignDetail({ id }: { id: string }) {
   const updateStatus = trpc.courrier.updateRecipientStatus.useMutation({
     onSuccess: () => utils.courrier.campaignDetail.invalidate({ campaignId: id }),
   });
+  const regenerate = trpc.courrier.regenerateCampaign.useMutation({ onSuccess: async result => { await utils.courrier.campaignDetail.invalidate({ campaignId: id }); setRegenerateOpen(false); setLifecycleNotice(`${result.count} courrier${result.count > 1 ? "s" : ""} régénéré${result.count > 1 ? "s" : ""}. Les anciens fichiers restent disponibles dans l’historique des lots.`); } });
   const updateLifecycle = trpc.courrier.setCampaignLifecycle.useMutation({
     onSuccess: async result => { await utils.courrier.campaignDetail.invalidate({ campaignId: id }); setLifecycleNotice(result.lifecycleStatus === "closed" ? "Campagne clôturée : aucun nouvel ajout ne sera accepté." : "Campagne rouverte : vous pouvez ajouter un nouveau lot."); },
   });
+
+  useEffect(() => { if (data?.campaign.style) setLetterStyle(data.campaign.style as LetterStyle); }, [data?.campaign.style]);
 
   if (isLoading) {
     return <DashboardLayout><div className="grid min-h-[60vh] place-items-center text-sm text-[#7f8780]"><span className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" />Chargement de la campagne…</span></div></DashboardLayout>;
@@ -72,7 +79,7 @@ export default function CampaignDetail({ id }: { id: string }) {
           <p className="mt-3 text-sm text-[#78827a]">Créée le {formatCampaignDate(campaign.createdAt)} · {campaign.recipientCount} destinataire{campaign.recipientCount > 1 ? "s" : ""}</p>
         </div>
 
-        <div className="mt-6 flex flex-wrap items-center gap-3"><Button onClick={() => setAppendOpen(true)} disabled={campaign.lifecycleStatus === "closed"} className="rounded-xl bg-[#123d35] hover:bg-[#0b2d27]"><Plus className="mr-2 h-4 w-4" />Ajouter des destinataires</Button><Button variant="outline" onClick={() => updateLifecycle.mutate({ campaignId: campaign.id, lifecycleStatus: campaign.lifecycleStatus === "closed" ? "open" : "closed" })} disabled={updateLifecycle.isPending} className="rounded-xl border-[#cfdbd3] text-[#315e51]">{campaign.lifecycleStatus === "closed" ? "Rouvrir la campagne" : "Clôturer la campagne"}</Button>{campaign.lifecycleStatus === "closed" && <Badge className="border-0 bg-[#f5f3ee] text-[#68726b]">Campagne clôturée</Badge>}</div>{lifecycleNotice && <p className="mt-3 rounded-xl bg-[#edf4ef] px-3 py-2 text-sm text-[#3f725b]">{lifecycleNotice}</p>}
+        <div className="mt-6 flex flex-wrap items-center gap-3"><Button onClick={() => setAppendOpen(true)} disabled={campaign.lifecycleStatus === "closed"} className="rounded-xl bg-[#123d35] hover:bg-[#0b2d27]"><Plus className="mr-2 h-4 w-4" />Ajouter des destinataires</Button><Button onClick={() => setRegenerateOpen(true)} disabled={!isReady || regenerate.isPending} variant="outline" className="rounded-xl border-[#cfdbd3] text-[#315e51]"><Download className="mr-2 h-4 w-4" />Modifier et régénérer</Button><Button variant="outline" onClick={() => updateLifecycle.mutate({ campaignId: campaign.id, lifecycleStatus: campaign.lifecycleStatus === "closed" ? "open" : "closed" })} disabled={updateLifecycle.isPending} className="rounded-xl border-[#cfdbd3] text-[#315e51]">{campaign.lifecycleStatus === "closed" ? "Rouvrir la campagne" : "Clôturer la campagne"}</Button>{campaign.lifecycleStatus === "closed" && <Badge className="border-0 bg-[#f5f3ee] text-[#68726b]">Campagne clôturée</Badge>}</div>{lifecycleNotice && <p className="mt-3 rounded-xl bg-[#edf4ef] px-3 py-2 text-sm text-[#3f725b]">{lifecycleNotice}</p>}
         {isReady && <CampaignExportActions pdfUrl={campaign.pdfFileUrl!} zipUrl={campaign.zipFileUrl!} onPrint={printCampaign} printNotice={printNotice} />}
 
         {campaign.status === "error" && <div className="mt-7 rounded-xl border border-[#eed9d1] bg-[#fff6f3] p-4 text-sm leading-6 text-[#95533f]"><TriangleAlert className="mr-2 inline h-4 w-4" />{campaign.errorMessage || "La génération a rencontré une erreur."}</div>}
@@ -109,6 +116,7 @@ export default function CampaignDetail({ id }: { id: string }) {
         </section>
       </div>
       <AppendRecipientsDialog campaignId={campaign.id} templateId={campaign.templateId} open={appendOpen} onOpenChange={setAppendOpen} />
+      <Dialog open={regenerateOpen} onOpenChange={setRegenerateOpen}><DialogContent className="max-h-[90vh] w-[calc(100%-1.5rem)] max-w-2xl overflow-y-auto border-[#ddd9d0] bg-[#fffdf7]"><DialogHeader><DialogTitle className="font-serif text-2xl text-[#1d3028]">Modifier et régénérer les courriers</DialogTitle><DialogDescription>Les destinataires restent inchangés. Les nouveaux réglages seront appliqués aux textes remplacés et les anciens fichiers resteront disponibles.</DialogDescription></DialogHeader><LetterStyleControls value={letterStyle} onChange={setLetterStyle} /><DialogFooter><Button variant="outline" onClick={() => setRegenerateOpen(false)} className="rounded-xl">Annuler</Button><Button onClick={() => regenerate.mutate({ campaignId: campaign.id, style: letterStyle })} disabled={regenerate.isPending} className="rounded-xl bg-[#123d35]">{regenerate.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}Confirmer la régénération</Button></DialogFooter></DialogContent></Dialog>
     </DashboardLayout>
   );
 }
